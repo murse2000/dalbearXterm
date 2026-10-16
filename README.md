@@ -57,6 +57,8 @@ npm run test:native
 
 ## 다음 릴리즈
 
-`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비하고 `v<버전>` 태그를 푸시합니다. GitHub Actions가 빌드·통신 시험·동의 정책·실제 업데이트 시험을 통과한 뒤 설치형·포터블·업데이트 패키지·피드·SHA256SUMS를 릴리즈에 게시합니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
+`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비합니다. 빌드·통신 시험·동의 정책·실제 업데이트 시험을 통과한 뒤 `v<버전>` 태그를 푸시하고 `node scripts/publish-release.mjs`로 게시합니다. 설치형·포터블·업데이트 패키지·피드·SHA256SUMS가 함께 올라갑니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
+
+태그 기반 GitHub Actions 자동 게시 템플릿은 `scripts/templates/release.yml`에 있습니다. 초기 GitHub OAuth 인증에는 workflow 권한이 없어 활성화하지 않았습니다. workflow 쓰기 권한이 있는 인증으로 `.github/workflows/release.yml`에 배치하면 사용할 수 있습니다. 앱 내 업데이트에는 이 워크플로가 필요하지 않습니다.
 
 기존 Electron 개발 호스트는 `npm start`로 유지합니다. 이 경로는 Electron 런타임과 해당 ABI의 모듈이 필요하며 공식 업데이트 대상은 Windows 네이티브 배포본입니다. REA 분석 도구는 제품 배포에 포함하지 않습니다.
