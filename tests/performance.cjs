@@ -37,6 +37,8 @@ const { createFixture } = require('./fixture.cjs');
       try {
         await application.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
         await page.locator('#new-ssh').click(); await page.locator('#session-name').fill('성능 측정'); await page.locator('#ssh-host').fill('127.0.0.1'); await page.locator('#ssh-port').fill(String(fixture.port)); await page.locator('#ssh-user').fill('tester'); await page.locator('#ssh-auth').selectOption('password'); await page.locator('#ssh-password').fill('test-fixture-password'); await page.locator('#connect-button').click(); await page.waitForFunction(() => document.querySelector('.session-message')?.textContent === '연결됨');
+        const sendToggle = page.locator('.session-toolbar').getByRole('button', { name: '송신', exact: true });
+        if (await sendToggle.count()) await sendToggle.click();
         await page.evaluate(() => {
           window.__perf = { bytes: 0, maxTimerDelayMs: 0, last: performance.now() };
           window.__perf.timer = setInterval(() => { const now = performance.now(); window.__perf.maxTimerDelayMs = Math.max(window.__perf.maxTimerDelayMs, now - window.__perf.last - 16); window.__perf.last = now; }, 16);

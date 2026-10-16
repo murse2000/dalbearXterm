@@ -74,17 +74,42 @@ async function freePort() {
           await page.waitForFunction(() => [...document.querySelectorAll('.session-pane:not([hidden]) .session-message')].some(message => message.textContent === '연결됨'));
         }
         await connect(fixture, '네이티브 SSH 검증');
+        const densityDirectory = path.resolve('test-results/density'); await fs.mkdir(densityDirectory, { recursive: true });
+        const label = process.env.DALBEAR_DENSITY_LABEL || 'after';
+        const density = await page.evaluate(() => {
+          const rect = selector => { const box = document.querySelector(selector).getBoundingClientRect(); return { width: box.width, height: box.height }; };
+          const terminal = rect('.terminal-wrap');
+          return { viewport: { width: innerWidth, height: innerHeight }, header: rect('.app-header'), sidebar: rect('.sidebar'), terminal, terminalArea: terminal.width * terminal.height, rows: document.querySelector('.xterm-rows').childElementCount, fontSize: getComputedStyle(document.querySelector('.xterm-rows')).fontSize };
+        });
+        await fs.writeFile(path.join(densityDirectory, `${label}.json`), JSON.stringify(density, null, 2));
+        await page.screenshot({ path: path.join(densityDirectory, `${label}.png`) });
+        assert.equal(await page.locator('.sendbar').isVisible(), false);
+        assert.equal(await page.locator('#show-sessions').getAttribute('aria-expanded'), 'false');
+        await page.locator('#show-sessions').click(); assert.equal(await page.locator('#show-sessions').getAttribute('aria-expanded'), 'true');
+        assert.ok(await page.locator('#profiles').isVisible()); await page.locator('#show-sessions').click();
+        await page.locator('.session-toolbar').getByRole('button', { name: '송신', exact: true }).click();
         await page.locator('.sendbar input').fill('DALBEAR_NATIVE_SSH_OK'); await page.locator('.sendbar button').click();
         await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_NATIVE_SSH_OK'));
         await page.locator('.session-toolbar').getByRole('button', { name: 'SFTP', exact: true }).click(); await page.waitForSelector('.file-name');
         assert.ok((await page.locator('#file-list').innerText()).includes('remote.txt')); await page.locator('#files-close').click();
         await page.getByRole('button', { name: 'HEX', exact: true }).click(); await page.waitForFunction(() => /^00000000  /.test(document.querySelector('.hex-view').textContent)); await page.getByRole('button', { name: 'HEX', exact: true }).click();
         await page.locator('#new-local').click(); await page.waitForFunction(() => document.querySelector('#session-count').textContent.includes('2'));
+        await page.locator('.session-pane:not([hidden]) .session-toolbar').getByRole('button', { name: '송신', exact: true }).click();
         await page.locator('.session-pane:not([hidden]) .sendbar input').fill('Write-Output DALBEAR_NATIVE_PTY_OK'); await page.locator('.session-pane:not([hidden]) .sendbar button').click();
         await page.waitForFunction(() => [...document.querySelectorAll('.xterm-rows')].some(rows => rows.textContent.includes('DALBEAR_NATIVE_PTY_OK')));
         await page.locator('#split').click(); assert.equal(await page.locator('.session-pane:not([hidden])').count(), 2);
+        const openToggles = page.locator('.session-pane:not([hidden]) .session-toolbar button[aria-pressed="true"]');
+        while (await openToggles.count()) await openToggles.first().click();
+        await page.setViewportSize({ width: 1024, height: 640 });
+        assert.ok(await page.evaluate(() => [...document.querySelectorAll('.session-pane:not([hidden])')].every(pane => {
+          const bounds = pane.getBoundingClientRect(); const toolbar = pane.querySelector('.session-toolbar');
+          return toolbar.getBoundingClientRect().height <= 28 && [...toolbar.querySelectorAll('button')].every(button => button.getBoundingClientRect().right <= bounds.right);
+        })), '작은 분할 화면에서도 도구가 잘리거나 두 줄을 차지하면 안 됩니다.');
+        await page.screenshot({ path: path.join(root, '03-compact-small.png') });
+        await page.setViewportSize(density.viewport);
         await page.screenshot({ path: path.join(root, '02-connected-split.png') }); await page.locator('#split').click();
         await connect(load, '연속 출력 측정');
+        await page.locator('.session-pane:not([hidden]) .session-toolbar').getByRole('button', { name: '송신', exact: true }).click();
         await page.evaluate(() => {
           window.__perf = { bytes: 0, chunks: [], maxTimerDelayMs: 0, last: performance.now() };
           window.__perf.timer = setInterval(() => { const now = performance.now(); window.__perf.maxTimerDelayMs = Math.max(window.__perf.maxTimerDelayMs, now - window.__perf.last - 16); window.__perf.last = now; }, 16);
@@ -101,9 +126,19 @@ async function freePort() {
           return { bytes: window.__perf.bytes, maxTimerDelayMs: window.__perf.maxTimerDelayMs, hash };
         }) };
         assert.equal(report.output.hash, createHash('sha256').update(payload).update('\r\nPERFORMANCE_OUTPUT_COMPLETE\r\n').digest('hex'));
+        await page.locator('#new-serial').click(); await page.locator('#session-name').fill('시리얼 도구 검증');
+        await page.locator('#serial-port').evaluate(select => select.add(new Option('시험용 미존재 포트', 'DALBEAR_MISSING_TEST_PORT')));
+        await page.locator('#serial-port').selectOption('DALBEAR_MISSING_TEST_PORT'); await page.locator('#save-session').uncheck();
+        await page.locator('#connect-button').click(); await page.waitForSelector('.session-pane:not([hidden]) .session-message.error');
+        assert.ok(await page.locator('.session-pane:not([hidden]) .sendbar').isVisible());
+        assert.equal(await page.locator('.session-pane:not([hidden]) .signals').isVisible(), false);
+        await page.locator('.session-pane:not([hidden])').getByRole('button', { name: '신호', exact: true }).click();
+        assert.ok(await page.locator('.session-pane:not([hidden]) .signals').isVisible());
+        await page.locator('.session-pane:not([hidden])').getByRole('button', { name: '신호', exact: true }).click();
+        assert.equal(await page.locator('.session-pane:not([hidden]) .signals').isVisible(), false);
         const stored = await fs.readFile(path.join(settings, 'settings.json'), 'utf8'); assert.ok(!stored.includes('test-fixture-password'));
         assert.deepEqual(errors, []);
-        report.checks = ['화면·포트 준비', '렌더러 격리', '세션 저장', 'SSH 송수신', 'SFTP 목록', 'HEX 이력', '로컬 PowerShell', '분할 화면', '2MiB 연속 출력', '비밀번호 미저장'];
+        report.checks = ['화면·포트 준비', '렌더러 격리', '세션 저장', 'SSH 송수신', 'SFTP 목록', 'HEX 이력', '로컬 PowerShell', '분할 화면', '패널·송신줄 접기', '작은 창 도구 배치', '시리얼 신호 접기·오류 표시', '2MiB 연속 출력', '비밀번호 미저장'];
         await fs.writeFile(path.join(root, 'performance.json'), JSON.stringify(report, null, 2));
       } catch (error) { console.error(error); if (page) { await page.screenshot({ path: path.join(root, 'failure.png') }); console.error(await page.locator('body').innerText()); } throw error; }
       finally {

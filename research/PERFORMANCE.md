@@ -43,3 +43,18 @@ npm run test:ui
 실측 원본: `research/performance-before.json`, `research/performance-before-no-profiler.json`, `research/performance-native.json`. 자세한 CPU 프로파일과 비교용 추적 자료는 배포에 포함하지 않는 `test-results/performance`에 있다.
 
 공식 자료: [Electron 성능 가이드](https://www.electronjs.org/docs/latest/tutorial/performance), [xterm.js 흐름 제어](https://xtermjs.org/docs/guides/flowcontrol/), [WebView2 보안 지침](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security).
+
+## 0.2.1 고밀도 UI
+
+같은 Windows 창에서 실제 SSH 테스트 세션을 열고, WebView2 작업 영역 1464×857px에서 측정했다. 터미널 글자는 두 버전 모두 13px이다.
+
+| 항목 | 0.2.0 | 0.2.1 |
+| --- | ---: | ---: |
+| 상단 도구 모음 높이 | 72px | 32px |
+| 첫 터미널의 왼쪽 패널 폭 | 267px | 26px 접힌 레일 |
+| 터미널 영역 | 1195×641px | 1436×754px |
+| 표시 행 수 | 37행 | 44행 |
+
+기본 연결 화면의 터미널 면적은 약 41% 늘었다. SSH·로컬 송신줄은 기본 접힘이며 시리얼 송신줄은 기본 표시한다. 패널과 송신줄을 펼치면 그만큼 터미널 영역이 줄어든다. 오류·연결 종료 안내는 숨기지 않는다.
+
+1024×640px 분할 화면에서 도구가 한 줄에 배치되고 잘리지 않는지, 패널·송신줄·시리얼 제어 신호를 펼치고 접을 수 있는지 검증했다. SSH·SFTP·PowerShell·로그와 2MiB 수신 SHA-256 검증을 통과했다. 이 측정과 화면 캡처는 로컬 `test-results/density`에 보관한다.

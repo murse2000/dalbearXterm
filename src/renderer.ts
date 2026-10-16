@@ -115,6 +115,7 @@ async function send(view: View, bytes: Uint8Array): Promise<void> {
   for (let offset = 0; offset < bytes.length; offset += 32768) await api.write(view.id, bytes.slice(offset, offset + 32768));
 }
 async function connect(profile: Profile, credentials: Credentials): Promise<void> {
+  if (views.size === 0) sidebarExpanded(false);
   const id = crypto.randomUUID();
   const term = new Terminal({ cursorBlink: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { background: '#000000', foreground: '#dedede', cursor: '#b7d3b0', selectionBackground: '#31516c', black: '#000000', red: '#e87575', green: '#75cc83', yellow: '#e7cf74', blue: '#7aade5', magenta: '#c994df', cyan: '#73ced7', white: '#ededed' } });
   const fitAddon = new FitAddon(); const search = new SearchAddon(); term.loadAddon(fitAddon); term.loadAddon(search);
@@ -126,16 +127,20 @@ async function connect(profile: Profile, credentials: Credentials): Promise<void
   const searchBox = document.createElement('input'); searchBox.className = 'search-box'; searchBox.placeholder = '출력 검색'; searchBox.ariaLabel = '터미널 출력 검색'; searchBox.addEventListener('keydown', event => { if (event.key === 'Enter') search.findNext(searchBox.value); });
   const wrap = document.createElement('div'); wrap.className = 'terminal-wrap'; const host = document.createElement('div'); host.className = 'terminal-host'; const hex = document.createElement('pre'); hex.className = 'hex-view'; hex.hidden = true; wrap.append(host, hex);
   const message = document.createElement('div'); message.className = 'session-message'; message.textContent = '연결 준비 중';
+  const sendbar = document.createElement('form'); sendbar.className = 'sendbar'; sendbar.hidden = profile.kind !== 'serial';
   const view: View = { id, profile, state: 'connecting', term, fit: fitAddon, search, pane, message, hex, hexMode: false, hexHistory: new HexHistory(), log: false, logButton, connectButton: reconnectButton, observer: new ResizeObserver(() => fit(view)) };
   toolbar.append(detail, searchBox, button('HEX', () => { view.hexMode = !view.hexMode; hex.hidden = !view.hexMode; scheduleHex(view); }), button('지우기', () => { term.clear(); view.hexHistory.clear(); hex.textContent = ''; }), logButton);
   if (profile.kind === 'ssh') toolbar.append(button('SFTP', () => showFiles(view)));
-  toolbar.append(reconnectButton); pane.append(toolbar, wrap);
+  const sendToggle = button('송신', () => { sendbar.hidden = !sendbar.hidden; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); if (!sendbar.hidden) sendbar.querySelector('input')?.focus(); else term.focus(); });
+  sendToggle.title = 'TEXT/HEX 송신줄 표시'; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); toolbar.append(sendToggle, reconnectButton); pane.append(toolbar, wrap);
   if (profile.kind === 'serial') {
-    const signals = document.createElement('div'); signals.className = 'signals'; const boxes: HTMLInputElement[] = [];
+    const signals = document.createElement('div'); signals.className = 'signals'; signals.hidden = true; const boxes: HTMLInputElement[] = [];
+    const signalToggle = button('신호', () => { signals.hidden = !signals.hidden; signalToggle.setAttribute('aria-pressed', String(!signals.hidden)); });
+    signalToggle.title = 'DTR/RTS/BREAK 제어 표시'; signalToggle.setAttribute('aria-pressed', 'false'); toolbar.insertBefore(signalToggle, reconnectButton);
     for (const name of ['DTR', 'RTS', 'BREAK']) { const label = document.createElement('label'); const box = document.createElement('input'); box.type = 'checkbox'; boxes.push(box); label.append(box, document.createTextNode(name)); signals.append(label); }
     signals.append(button('신호 적용', () => api.serialSignals(id, boxes[0].checked, boxes[1].checked, boxes[2].checked)), document.createTextNode('연결 시 신호 상태는 드라이버 기본값입니다.')); pane.append(signals);
   }
-  const sendbar = document.createElement('form'); sendbar.className = 'sendbar'; const mode = document.createElement('select'); mode.add(new Option('TEXT', 'text')); mode.add(new Option('HEX', 'hex'));
+  const mode = document.createElement('select'); mode.add(new Option('TEXT', 'text')); mode.add(new Option('HEX', 'hex'));
   const command = document.createElement('input'); command.placeholder = '송신할 내용 · Enter로 전송'; command.ariaLabel = '송신 내용'; command.autocomplete = 'off';
   const eol = document.createElement('select'); for (const [label, name] of [['CR', 'cr'], ['LF', 'lf'], ['CR+LF', 'crlf'], ['없음', 'none']]) eol.add(new Option(label, name)); eol.value = profile.kind === 'serial' ? profile.eol : 'cr';
   const sendButton = document.createElement('button'); sendButton.textContent = '전송 →'; sendButton.type = 'submit'; sendbar.append(mode, command, eol, sendButton);
@@ -183,7 +188,16 @@ function renderWorkspace(): void {
   element('session-count').textContent = `활성 연결 ${[...views.values()].filter(view => view.state === 'connected').length}`;
   requestAnimationFrame(() => { for (const view of views.values()) fit(view); });
 }
+function sidebarExpanded(expanded: boolean): void {
+  document.body.classList.toggle('sidebar-collapsed', !expanded);
+  element('show-sessions').setAttribute('aria-expanded', String(expanded));
+}
+function toggleSessions(): void {
+  const expanded = !document.body.classList.contains('sidebar-collapsed') && !element('sidebar-content').hidden;
+  sidebarMode('sessions'); sidebarExpanded(!expanded);
+}
 function sidebarMode(mode: 'sessions' | 'files'): void {
+  sidebarExpanded(true);
   element('sidebar-content').hidden = mode !== 'sessions'; element('files-panel').hidden = mode !== 'files';
   element('rail-sessions').classList.toggle('selected', mode === 'sessions'); element('rail-files').classList.toggle('selected', mode === 'files');
 }
@@ -228,10 +242,10 @@ function onEvent(event: AppEvent): void {
     view.hexHistory.append(bytes);
     scheduleHex(view);
   } else if (event.type === 'state') {
-    view.state = event.state; view.message.textContent = event.message; view.message.classList.toggle('error', event.state === 'error'); view.connectButton.textContent = event.state === 'connected' || event.state === 'connecting' ? '연결 종료' : '다시 연결'; view.logButton.disabled = event.state !== 'connected';
+    view.state = event.state; view.message.textContent = event.message; view.message.hidden = event.state === 'connected'; view.message.classList.toggle('error', event.state === 'error'); view.connectButton.textContent = event.state === 'connected' || event.state === 'connecting' ? '연결 종료' : '다시 연결'; view.logButton.disabled = event.state !== 'connected';
     element('status').textContent = `${view.profile.name} · ${event.message}`; renderWorkspace();
   } else if (event.type === 'log') {
-    view.log = event.active; view.logButton.textContent = event.active ? '● 로그 종료' : '○ 로그'; view.logButton.classList.toggle('recording', event.active); view.message.textContent = event.message;
+    view.log = event.active; view.logButton.textContent = event.active ? '● 로그 종료' : '○ 로그'; view.logButton.classList.toggle('recording', event.active); view.logButton.title = event.message; view.message.textContent = event.message; view.message.hidden = event.active || event.message === '로그 저장 종료';
     if (!event.active && event.message.includes('실패')) toast(event.message);
   } else {
     let row = document.getElementById(`transfer-${event.transferId}`);
@@ -248,13 +262,13 @@ for (const id of ['new-ssh', 'empty-ssh']) element(id).addEventListener('click',
 element('new-local').addEventListener('click', () => { void run(local); });
 element('empty-local').addEventListener('click', () => { void run(local); });
 element('tab-add').addEventListener('click', () => showDialog('serial'));
-element('show-sessions').addEventListener('click', () => sidebarMode('sessions'));
-element('rail-sessions').addEventListener('click', () => sidebarMode('sessions'));
+element('show-sessions').addEventListener('click', toggleSessions);
+element('rail-sessions').addEventListener('click', toggleSessions);
 element('rail-files').addEventListener('click', () => { void run(() => showFiles()); });
 element('rail-ports').addEventListener('click', () => { sidebarMode('sessions'); element('ports').scrollIntoView(); });
 element('toolbar-files').addEventListener('click', () => { void run(() => showFiles()); });
 element('toolbar-log').addEventListener('click', () => { const view = activeId ? views.get(activeId) : undefined; if (view) view.logButton.click(); });
-element('home-tab').addEventListener('click', () => { homeSelected = true; renderWorkspace(); });
+element('home-tab').addEventListener('click', () => { homeSelected = true; sidebarExpanded(true); renderWorkspace(); });
 element('refresh-ports').addEventListener('click', () => { void run(refreshPorts); });
 input('profile-filter').addEventListener('input', renderProfiles);
 element('dialog-close').addEventListener('click', () => element<HTMLDialogElement>('connection-dialog').close());
@@ -264,7 +278,7 @@ element('choose-key').addEventListener('click', () => { void run(async () => { c
 element('connection-form').addEventListener('submit', event => { event.preventDefault(); void submit(true); });
 element('save-only').addEventListener('click', () => { void submit(false); });
 element('split').addEventListener('click', split);
-element('files-close').addEventListener('click', () => { sidebarMode('sessions'); filesId = undefined; });
+element('files-close').addEventListener('click', () => { sidebarMode('sessions'); sidebarExpanded(false); filesId = undefined; });
 element('files-form').addEventListener('submit', event => { event.preventDefault(); void run(() => loadFiles(value('remote-path'))); });
 element('files-refresh').addEventListener('click', () => { void run(() => loadFiles(value('remote-path'))); });
 element('files-up').addEventListener('click', () => { void run(() => loadFiles(`${value('remote-path')}/..`)); });
