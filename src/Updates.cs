@@ -47,21 +47,27 @@ sealed class UpdateDialog : Form {
   readonly Action restart;
   readonly Button primary = new Button { Text = "동의하고 다운로드", AutoSize = true };
   readonly Button later = new Button { Text = "나중에", AutoSize = true };
-  readonly Label status = new Label { AutoSize = true, MaximumSize = new Size(465, 0) };
-  readonly ProgressBar progress = new ProgressBar { Width = 465, Height = 15 };
+  readonly Label status = new Label { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 6) };
+  readonly ProgressBar progress = new ProgressBar { Dock = DockStyle.Fill, Height = 15, Margin = new Padding(0, 0, 0, 10) };
   readonly CancellationTokenSource cancellation = new CancellationTokenSource();
   bool downloading;
   public UpdateDialog(UpdateConsent update, Action restart) {
     this.update = update; this.restart = restart;
-    Text = "dalbearXterm 업데이트"; ClientSize = new Size(505, 375); FormBorderStyle = FormBorderStyle.FixedDialog;
+    Font = new Font("Malgun Gothic", 10F);
+    Text = "dalbearXterm 업데이트"; ClientSize = new Size(620, 500); MinimumSize = new Size(540, 440);
     MaximizeBox = false; MinimizeBox = false; StartPosition = FormStartPosition.CenterParent;
-    var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(16) };
+    var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(16) };
+    layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    for (var row = 0; row < 6; row++) layout.RowStyles.Add(new RowStyle(row == 2 ? SizeType.Percent : SizeType.AutoSize, row == 2 ? 100 : 0));
     var version = update.Candidate.TargetFullRelease.Version;
-    layout.Controls.Add(new Label { Text = "새 버전 " + version + "을 사용할 수 있습니다.", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 10) });
-    layout.Controls.Add(new Label { Text = "다운로드와 설치는 각각 동의한 경우에만 진행합니다.\n나중에를 누르거나 창을 닫으면 자동 설치하지 않습니다.", AutoSize = true, Margin = new Padding(3, 3, 3, 10) });
-    layout.Controls.Add(new TextBox { Text = update.Candidate.TargetFullRelease.NotesMarkdown ?? "릴리즈 정보가 없습니다.", Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Width = 465, Height = 155 });
+    layout.Controls.Add(new Label { Text = "새 버전 " + version + "을 사용할 수 있습니다.", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 10) });
+    layout.Controls.Add(new Label { Text = "다운로드와 설치는 각각 동의한 경우에만 진행합니다.\n나중에를 누르거나 창을 닫으면 자동 설치하지 않습니다.", AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 12) });
+    // Windows 텍스트 상자가 GitHub의 LF 줄바꿈도 문단과 항목으로 표시하도록 변환한다.
+    var notes = (update.Candidate.TargetFullRelease.NotesMarkdown ?? "릴리즈 정보가 없습니다.").Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", Environment.NewLine);
+    layout.Controls.Add(new TextBox { Text = notes, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BackColor = SystemColors.Window, Margin = new Padding(0, 0, 0, 10), AccessibleName = "업데이트 내역" });
     status.Text = "다운로드 대기 중"; layout.Controls.Add(status); layout.Controls.Add(progress);
-    var buttons = new FlowLayoutPanel { AutoSize = true }; buttons.Controls.Add(primary); buttons.Controls.Add(later); layout.Controls.Add(buttons); Controls.Add(layout);
+    var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) }; buttons.Controls.Add(primary); buttons.Controls.Add(later); layout.Controls.Add(buttons); Controls.Add(layout);
+    ActiveControl = later;
     later.Click += delegate { Close(); };
     FormClosing += delegate { cancellation.Cancel(); };
     primary.Click += async delegate {
