@@ -21,6 +21,7 @@ bridge.addEventListener('message', ({ data }) => {
   else if (data.kind === 'theme') for (const listener of themes) listener(data.theme);
 });
 const api: Api = {
+  homeAppearance: () => invoke('home-appearance'), setHomeAppearance: appearance => invoke('home-appearance-set', appearance),
   theme: () => invoke('theme'), setTheme: theme => invoke('theme-set', theme),
   onTheme: listener => { themes.add(listener); return () => { themes.delete(listener); }; },
   profiles: () => invoke('profiles'), saveProfile: profile => invoke('profile-save', profile), deleteProfile: id => invoke('profile-delete', { id }), ports: () => invoke('ports'),

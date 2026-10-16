@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Store } from './store';
 import { Connections } from './connections';
 import { Transfers } from './transfers';
-import { credentialsSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
+import { credentialsSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
 
 if (process.env.DALBEAR_TEST_DATA) app.setPath('userData', process.env.DALBEAR_TEST_DATA);
 app.setAppUserModelId('com.hrobotics.dalbearxterm');
@@ -57,6 +57,8 @@ app.whenReady().then(async () => {
   }
   handle('profiles', z.undefined(), () => store.profiles());
   handle('theme', z.undefined(), () => store.theme());
+  handle('home-appearance', z.undefined(), () => store.homeAppearance());
+  handle('home-appearance-set', homeAppearanceSchema, appearance => store.setHomeAppearance(appearance));
   handle('theme-set', themeSchema, async theme => {
     await store.setTheme(theme); nativeTheme.themeSource = theme; window.setBackgroundColor(theme === 'dark' ? '#1c222b' : '#f3f3f3');
     for (const name of ['light', 'dark']) { const item = Menu.getApplicationMenu()?.getMenuItemById(`theme-${name}`); if (item) item.checked = name === theme; }

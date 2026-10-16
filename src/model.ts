@@ -15,6 +15,11 @@ export const idSchema = z.uuid();
 export const sizeSchema = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(1).max(500) });
 export const themeSchema = z.enum(['light', 'dark']);
 export type Theme = z.infer<typeof themeSchema>;
+export const homeAppearanceSchema = z.object({
+  background: z.string().regex(/^#[0-9a-f]{6}$/i).nullable(),
+  logoDataUrl: z.string().max(400000).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/).nullable()
+});
+export type HomeAppearance = z.infer<typeof homeAppearanceSchema>;
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export type AppEvent =
   | { type: 'data'; id: string; bytes: Uint8Array }
@@ -25,6 +30,8 @@ export interface RemoteEntry { name: string; directory: boolean; size: number; m
 export interface PortInfo { path: string; manufacturer?: string; serialNumber?: string; }
 export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'theme-light' | 'theme-dark';
 export interface Api {
+  homeAppearance(): Promise<HomeAppearance>;
+  setHomeAppearance(appearance: HomeAppearance): Promise<HomeAppearance>;
   theme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<Theme>;
   onTheme(listener: (theme: Theme) => void): () => void;

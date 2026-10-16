@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createFixture } = require('./fixture.cjs');
+const { configureHome, assertRestoredHome, checkEditingAndReset } = require('./home-appearance.cjs');
 
 async function freePort() {
   const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -55,6 +56,7 @@ async function freePort() {
         await page.waitForFunction(() => document.querySelector('#ports .port, #ports .profile-empty'));
         report.startupMs.push(performance.now() - started);
         console.log(JSON.stringify({ launch: index + 1, startupMs: report.startupMs.at(-1) }));
+        if (index === 0) await configureHome(page, run, root); else await assertRestoredHome(page);
         assert.equal(await page.locator('#theme-select').inputValue(), index === 1 ? 'dark' : 'light', '재실행한 앱은 저장된 테마를 복원해야 합니다.');
         async function selectTheme(theme) {
           await page.locator('#theme-select').selectOption(theme);
@@ -73,6 +75,7 @@ async function freePort() {
           report.uiClickMs.push(performance.now() - start); await page.locator('#dialog-close').click();
         }
         if (index < 2) continue;
+        await checkEditingAndReset(page);
         assert.equal(await page.evaluate(() => typeof require), 'undefined'); assert.equal(await page.evaluate(() => typeof process), 'undefined');
         await page.screenshot({ path: path.join(root, '01-workspace.png') });
         await page.locator('#new-serial').click(); await page.locator('#session-name').fill('네이티브 시리얼 저장');
@@ -103,6 +106,11 @@ async function freePort() {
         await page.locator('.session-toolbar').getByRole('button', { name: '송신', exact: true }).click();
         await page.locator('.sendbar input').fill('DALBEAR_NATIVE_SSH_OK'); await page.locator('.sendbar button').click();
         await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_NATIVE_SSH_OK'));
+        const terminalBackground = await page.locator('.terminal-wrap').evaluate(node => getComputedStyle(node).backgroundColor);
+        await page.locator('#home-tab').click(); await configureHome(page, run, root);
+        assert.ok((await page.locator('#session-count').innerText()).includes('1')); await page.locator('.tab').click();
+        assert.equal(await page.locator('.terminal-wrap').evaluate(node => getComputedStyle(node).backgroundColor), terminalBackground);
+        await page.locator('.sendbar input').fill('DALBEAR_HOME_SSH_OK'); await page.locator('.sendbar button').click(); await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_HOME_SSH_OK'));
         await page.locator('.session-toolbar').getByRole('button', { name: 'SFTP', exact: true }).click(); await page.waitForSelector('.file-name');
         assert.ok((await page.locator('#file-list').innerText()).includes('remote.txt'));
         await selectTheme('dark'); assert.equal(await page.locator('#files-panel').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 40, 51)');
@@ -171,6 +179,7 @@ async function freePort() {
         assert.deepEqual(errors, []);
         report.checks = ['화면·포트 준비', '렌더러 격리', '세션 저장', 'SSH 송수신', 'SFTP 목록', 'HEX 이력', '로컬 PowerShell', '분할 화면', '패널·송신줄 접기', '작은 창 도구 배치', '시리얼 신호 접기·오류 표시', '2MiB 연속 출력', '비밀번호 미저장'];
         report.checks.push('일반·다크 저장/재실행 복원', '기존·분할 터미널 동시 테마 전환', '테마 전환 후 연결·출력 유지');
+        report.checks.push('홈 배경·로고 미리보기/저장/취소/기본값', '원본 이미지 제거 후 재실행 복원', 'PNG/JPG/WebP·손상/용량 검증', '홈 꾸미기 후 SSH·터미널 색상 유지');
         await fs.writeFile(path.join(root, 'performance.json'), JSON.stringify(report, null, 2));
       } catch (error) { console.error(error); if (page) { await page.screenshot({ path: path.join(root, 'failure.png') }); console.error(await page.locator('body').innerText()); } throw error; }
       finally {

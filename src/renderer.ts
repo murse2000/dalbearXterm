@@ -4,7 +4,8 @@ import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { HexHistory } from './hex-history';
 import { terminalThemes } from './theme';
-import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme } from './model';
+import { homeTextColor, readHomeLogo } from './home-appearance';
+import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme, type HomeAppearance } from './model';
 
 declare global { interface Window { terminal: Api } }
 const api = window.terminal;
@@ -26,13 +27,44 @@ interface View {
 }
 const views = new Map<string, View>();
 let theme: Theme = 'light';
+let homeAppearance: HomeAppearance = { background: null, logoDataUrl: null };
+let homeDraft = { ...homeAppearance };
+let homeLogoRequest = 0;
+let homeSaving = false;
 function applyTheme(next: Theme): void {
   theme = next; document.documentElement.dataset.theme = next; set('theme-select', next);
   for (const view of views.values()) view.term.options.theme = { ...terminalThemes[next] };
+  if (element<HTMLDialogElement>('home-appearance-dialog').open) renderHomePreview();
 }
 async function changeTheme(next: Theme): Promise<void> {
   const select = element<HTMLSelectElement>('theme-select'); select.disabled = true;
   try { applyTheme(await api.setTheme(next)); } finally { select.value = theme; select.disabled = false; }
+}
+function homeBackground(target: HTMLElement, background: string | null): void {
+  const foreground = background ? homeTextColor(background) : '';
+  target.style.setProperty('--home-background', background || ''); target.style.setProperty('--home-text', foreground);
+  target.style.setProperty('--home-border', foreground ? `${foreground}44` : '');
+}
+function applyHomeAppearance(appearance: HomeAppearance): void {
+  homeAppearance = appearance; homeBackground(element('empty'), appearance.background);
+  const logo = element<HTMLImageElement>('home-logo'); logo.src = appearance.logoDataUrl || 'icon.svg'; logo.alt = appearance.logoDataUrl ? '사용자 지정 홈 로고' : '달곰 터미널';
+  element<HTMLButtonElement>('customize-home').disabled = false;
+}
+function renderHomePreview(): void {
+  homeBackground(element('home-preview'), homeDraft.background);
+  set('home-background', homeDraft.background || getComputedStyle(element('empty')).getPropertyValue('--surface').trim());
+  element('home-background-value').textContent = homeDraft.background?.toUpperCase() || '테마 기본색';
+  element<HTMLImageElement>('home-logo-preview').src = homeDraft.logoDataUrl || 'icon.svg';
+  element('home-logo-status').textContent = homeDraft.logoDataUrl ? '사용자 로고' : '기본 로고';
+}
+function homeBusy(busy: boolean): void {
+  for (const control of element('home-appearance-form').querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) {
+    control.disabled = busy && (homeSaving || !['home-appearance-close', 'home-appearance-cancel'].includes(control.id));
+  }
+}
+function showHomeAppearance(): void {
+  homeDraft = { ...homeAppearance }; homeLogoRequest++; homeBusy(false); input('home-logo-file').value = ''; element('home-appearance-error').textContent = '';
+  renderHomePreview(); element<HTMLDialogElement>('home-appearance-dialog').showModal(); element('home-background').focus();
 }
 function toast(message: string): void { element('toast').textContent = message; element('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { element('toast').hidden = true; }, 7000); }
 async function run(action: () => Promise<unknown>): Promise<void> { try { await action(); } catch (error) { toast((error as Error).message); } }
@@ -268,6 +300,31 @@ function onEvent(event: AppEvent): void {
 }
 api.onEvent(onEvent);
 api.onTheme(applyTheme);
+element('customize-home').addEventListener('click', showHomeAppearance);
+for (const id of ['home-appearance-close', 'home-appearance-cancel']) element(id).addEventListener('click', () => { if (!homeSaving) element<HTMLDialogElement>('home-appearance-dialog').close(); });
+element('home-appearance-dialog').addEventListener('cancel', event => { if (homeSaving) event.preventDefault(); });
+element('home-appearance-dialog').addEventListener('close', () => { homeLogoRequest++; input('home-logo-file').value = ''; homeBusy(false); });
+input('home-background').addEventListener('input', () => { homeDraft.background = value('home-background'); renderHomePreview(); });
+element('home-background-default').addEventListener('click', () => { homeDraft.background = null; renderHomePreview(); });
+element('home-logo-default').addEventListener('click', () => { homeDraft.logoDataUrl = null; element('home-appearance-error').textContent = ''; renderHomePreview(); });
+element('home-logo-choose').addEventListener('click', () => input('home-logo-file').click());
+input('home-logo-file').addEventListener('change', () => {
+  const file = input('home-logo-file').files?.[0]; if (!file) return;
+  const request = ++homeLogoRequest; homeBusy(true); element('home-appearance-error').textContent = '';
+  void (async () => {
+    try { const logo = await readHomeLogo(file); if (request === homeLogoRequest) { homeDraft.logoDataUrl = logo; renderHomePreview(); } }
+    catch (error) { if (request === homeLogoRequest) element('home-appearance-error').textContent = (error as Error).message; }
+    finally { if (request === homeLogoRequest) { input('home-logo-file').value = ''; homeBusy(false); } }
+  })();
+});
+element('home-appearance-form').addEventListener('submit', event => {
+  event.preventDefault(); if (homeSaving) return; homeSaving = true; homeBusy(true); element('home-appearance-error').textContent = '';
+  void (async () => {
+    try { applyHomeAppearance(await api.setHomeAppearance(homeDraft)); element<HTMLDialogElement>('home-appearance-dialog').close(); }
+    catch (error) { element('home-appearance-error').textContent = (error as Error).message; }
+    finally { homeSaving = false; homeBusy(false); }
+  })();
+});
 element('theme-select').addEventListener('change', () => { void run(() => changeTheme(value('theme-select') as Theme)); });
 for (const id of ['new-serial', 'empty-serial']) element(id).addEventListener('click', () => showDialog('serial'));
 for (const id of ['new-ssh', 'empty-ssh']) element(id).addEventListener('click', () => showDialog('ssh'));
@@ -318,4 +375,4 @@ const icons: Record<string, { color: string; body: string }> = {
 for (const tool of document.querySelectorAll<HTMLElement>('[data-icon]')) {
   const icon = icons[tool.dataset.icon!]; const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('fill', icon.color); svg.setAttribute('stroke', icon.color); svg.setAttribute('stroke-width', '1.6'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = icon.body; tool.prepend(svg);
 }
-void run(async () => { applyTheme(await api.theme()); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); });
+void run(async () => { const [currentTheme, appearance] = await Promise.all([api.theme(), api.homeAppearance()]); applyTheme(currentTheme); applyHomeAppearance(appearance); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); });

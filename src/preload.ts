@@ -6,6 +6,7 @@ async function invoke<T>(action: string, body?: unknown): Promise<T> {
   return result.value;
 }
 const api: Api = {
+  homeAppearance: () => invoke('home-appearance'), setHomeAppearance: appearance => invoke('home-appearance-set', appearance),
   theme: () => invoke('theme'), setTheme: theme => invoke('theme-set', theme),
   onTheme: listener => {
     const handler = (_event: Electron.IpcRendererEvent, theme: Theme) => listener(theme);

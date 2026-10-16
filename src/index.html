@@ -45,8 +45,9 @@
     <main>
       <nav class="workspace-bar"><button id="home-tab" class="home-tab" title="시작 화면">⌂</button><div id="tabs" class="tabs"></div><button id="tab-add" class="tab-add" title="새 연결">＋</button></nav>
       <section id="empty" class="empty-state">
+        <button id="customize-home" class="home-customize" type="button" disabled>홈 꾸미기</button>
         <div class="home-content">
-          <div class="home-brand"><img class="home-logo" src="icon.svg" alt="달곰 터미널"><div>dalbear<span>Xterm</span><small>시리얼 · SSH · 파일 전송</small></div></div>
+          <div class="home-brand"><img id="home-logo" class="home-logo" src="icon.svg" alt="달곰 터미널"><div>dalbear<span>Xterm</span><small>시리얼 · SSH · 파일 전송</small></div></div>
           <div class="home-actions"><button id="empty-local" class="start-terminal">로컬 터미널 시작</button><button id="empty-serial">새 시리얼 연결</button><button id="empty-ssh">새 SSH 연결</button></div>
           <div class="home-section-heading">저장된 세션</div>
           <div id="home-sessions" class="home-sessions"></div>
@@ -80,6 +81,20 @@
       </div>
       <div id="form-error" class="form-error" role="alert"></div>
       <div class="dialog-footer"><label class="check"><input id="save-session" type="checkbox" checked>세션 저장</label><button id="save-only" type="button">저장만</button><button id="connect-button" class="primary" type="submit">연결하기 ↗</button></div>
+    </form>
+  </dialog>
+  <dialog id="home-appearance-dialog" aria-labelledby="home-appearance-title">
+    <form id="home-appearance-form">
+      <div class="dialog-heading"><div><span class="eyebrow">홈 화면 설정</span><h2 id="home-appearance-title">홈 꾸미기</h2></div><button id="home-appearance-close" type="button" class="icon-button" aria-label="홈 꾸미기 닫기">×</button></div>
+      <div id="home-preview" class="home-preview"><img id="home-logo-preview" src="icon.svg" alt="홈 로고 미리보기"><div>dalbearXterm<small>홈 화면 미리보기</small></div></div>
+      <label for="home-background">홈 배경색</label>
+      <div class="home-appearance-row"><input id="home-background" type="color" aria-label="홈 배경색"><span id="home-background-value"></span><button id="home-background-default" type="button">테마 기본색</button></div>
+      <label>홈 로고</label>
+      <div class="home-appearance-row"><button id="home-logo-choose" type="button">이미지 선택…</button><button id="home-logo-default" type="button">기본 로고</button><span id="home-logo-status"></span></div>
+      <input id="home-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+      <p class="form-note">PNG·JPG·WebP, 최대 5MB. 로고는 비율을 유지해 저장합니다. 홈 화면에만 적용하며 원본 파일은 변경하지 않습니다.</p>
+      <div id="home-appearance-error" class="form-error" role="alert"></div>
+      <div class="dialog-footer home-appearance-footer"><button id="home-appearance-cancel" type="button">취소</button><button id="home-appearance-save" class="primary" type="submit">저장</button></div>
     </form>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>

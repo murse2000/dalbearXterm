@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createFixture } = require('./fixture.cjs');
+const { configureHome, assertRestoredHome, checkEditingAndReset } = require('./home-appearance.cjs');
 
 (async () => {
   const root = path.resolve(process.env.DALBEAR_EXE ? 'test-results/packaged' : 'test-results/ui');
@@ -21,6 +22,7 @@ const { createFixture } = require('./fixture.cjs');
     await page.locator('#theme-select').selectOption('dark'); await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     assert.equal(await application.evaluate(({ nativeTheme, Menu }) => nativeTheme.shouldUseDarkColors && Menu.getApplicationMenu().getMenuItemById('theme-dark').checked), true);
     await page.locator('#theme-select').selectOption('light'); await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+    await configureHome(page, run, root); await assertRestoredHome(page); await checkEditingAndReset(page);
     await page.screenshot({ path: path.join(root, '01-workspace.png') });
     assert.equal(await page.evaluate(() => typeof require), 'undefined');
     assert.equal(await page.evaluate(() => typeof process), 'undefined');

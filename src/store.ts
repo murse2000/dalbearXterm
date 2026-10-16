@@ -1,12 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { profileSchema, themeSchema, type Profile, type Theme } from './model';
+import { homeAppearanceSchema, profileSchema, themeSchema, type HomeAppearance, type Profile, type Theme } from './model';
 
-const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light') });
+const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light'), home: homeAppearanceSchema.default({ background: null, logoDataUrl: null }) });
 type Settings = z.infer<typeof fileSchema>;
 export class Store {
-  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light' };
+  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light', home: { background: null, logoDataUrl: null } };
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private readonly directory: string) {}
   async load(): Promise<void> {
@@ -15,6 +15,12 @@ export class Store {
   }
   profiles(): Profile[] { return structuredClone(this.settings.profiles); }
   theme(): Theme { return this.settings.theme; }
+  homeAppearance(): HomeAppearance { return structuredClone(this.settings.home); }
+  async setHomeAppearance(appearance: HomeAppearance): Promise<HomeAppearance> {
+    const clean = homeAppearanceSchema.parse(appearance);
+    await this.update(next => { next.home = clean; });
+    return structuredClone(clean);
+  }
   async setTheme(theme: Theme): Promise<Theme> {
     const clean = themeSchema.parse(theme);
     await this.update(next => { next.theme = clean; });

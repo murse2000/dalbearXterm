@@ -6,7 +6,7 @@ import { SerialPort } from 'serialport';
 import { Store } from './store';
 import { Connections } from './connections';
 import { Transfers } from './transfers';
-import { credentialsSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent } from './model';
+import { credentialsSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent } from './model';
 
 const dataDirectory = process.env.DALBEAR_TEST_DATA || path.join(process.env.APPDATA!, 'dalbear-xterm');
 const dialogs = new Map<number, (result: unknown) => void>();
@@ -48,6 +48,8 @@ async function main(): Promise<void> {
   function handle<T>(action: string, schema: z.ZodType<T>, handler: (body: T) => unknown): void { actions.set(action, body => handler(schema.parse(body))); }
   handle('profiles', z.undefined(), () => store.profiles());
   handle('theme', z.undefined(), () => store.theme());
+  handle('home-appearance', z.undefined(), () => store.homeAppearance());
+  handle('home-appearance-set', homeAppearanceSchema, appearance => store.setHomeAppearance(appearance));
   handle('theme-set', themeSchema, async theme => { await store.setTheme(theme); send({ kind: 'theme', theme }); return theme; });
   handle('profile-save', profileSchema, profile => store.save(profile)); handle('profile-delete', idBody, body => store.remove(body.id));
   handle('ports', z.undefined(), () => SerialPort.list());

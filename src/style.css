@@ -94,23 +94,32 @@ main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .state-dot.connected { background: #8fbf59; }
 .state-dot.connecting { background: #e7b75b; }
 .state-dot.error { background: #d05f58; }
-.empty-state { position: relative; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; background: var(--surface); overflow: auto; }
+.empty-state { position: relative; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; background: var(--home-background, var(--surface)); overflow: auto; }
 .home-content { width: min(580px, 90%); }
-.home-brand { display: flex; align-items: center; gap: 9px; color: var(--secondary); font-size: 23px; font-weight: 600; letter-spacing: -.7px; margin-bottom: 12px; }
+.home-brand { display: flex; align-items: center; gap: 9px; color: var(--home-text, var(--secondary)); font-size: 23px; font-weight: 600; letter-spacing: -.7px; margin-bottom: 12px; }
 .home-brand>div>span { font-weight: 300; }
-.home-brand small { display: block; font-size: 11px; letter-spacing: 1px; margin-top: 7px; font-weight: 400; color: var(--muted); }
-.home-logo { width: 42px; height: 42px; }
+.home-brand small { display: block; font-size: 11px; letter-spacing: 1px; margin-top: 7px; font-weight: 400; color: var(--home-text, var(--muted)); }
+.home-logo { width: 42px; height: 42px; object-fit: contain; }
 .home-actions { display: flex; gap: 5px; margin-bottom: 14px; }
 .home-actions button { padding: 5px 9px; font-size: 11px; }
 .home-actions .start-terminal { border-color: var(--hover-border); background: var(--button-hover); font-weight: 600; color: var(--accent); }
-.home-section-heading { color: var(--secondary); border-bottom: 1px solid var(--border); padding-bottom: 8px; font-size: 11px; font-weight: 600; }
+.home-section-heading { color: var(--home-text, var(--secondary)); border-bottom: 1px solid var(--home-border, var(--border)); padding-bottom: 8px; font-size: 11px; font-weight: 600; }
 .home-sessions { padding: 5px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .home-sessions button { text-align: left; padding: 4px 7px; background: var(--panel); border-color: var(--border); overflow: hidden; text-overflow: ellipsis; }
 .home-sessions button:hover { background: var(--hover-bg); border-color: var(--hover-border); }
 .home-sessions small { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
-.home-sessions .profile-empty { grid-column: 1 / -1; }
-.home-help { text-align: center; color: var(--muted); font-size: 10px; margin-top: 15px; }
-.empty-note { position: absolute; bottom: 20px; text-align: center; width: 95%; font-size: 10px; color: var(--muted); }
+.home-sessions .profile-empty { grid-column: 1 / -1; color: var(--home-text, var(--muted)); }
+.home-help { text-align: center; color: var(--home-text, var(--muted)); font-size: 10px; margin-top: 15px; }
+.empty-note { position: absolute; bottom: 20px; text-align: center; width: 95%; font-size: 10px; color: var(--home-text, var(--muted)); }
+.home-customize { position: absolute; top: 10px; right: 10px; padding: 3px 8px; font-size: 11px; }
+.home-preview { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 116px; border: 1px solid var(--border); border-radius: 3px; background: var(--home-background, var(--surface)); color: var(--home-text, var(--secondary)); font-size: 19px; }
+.home-preview img { width: 64px; height: 64px; object-fit: contain; }
+.home-preview small { display: block; font-size: 11px; margin-top: 6px; }
+#home-appearance-form>label { margin: 16px 0 6px; }
+.home-appearance-row { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.home-appearance-row input[type="color"] { width: 52px; height: 30px; padding: 2px; flex-shrink: 0; cursor: pointer; }
+.home-appearance-row span { color: var(--secondary); font-size: 11px; }
+.home-appearance-footer { justify-content: flex-end; }
 .status-bar { display: flex; align-items: center; justify-content: space-between; height: 19px; min-height: 19px; background: var(--panel); border-top: 1px solid var(--border); padding: 0 6px; font-size: 10px; color: var(--secondary); }
 .status-bar #status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%; }
 .workspace { display: flex; flex: 1; min-height: 0; overflow: hidden; }
