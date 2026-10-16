@@ -1,11 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { Api, AppEvent, MenuAction } from './model';
+import type { Api, AppEvent, MenuAction, Theme } from './model';
 async function invoke<T>(action: string, body?: unknown): Promise<T> {
   const result = await ipcRenderer.invoke(action, body);
   if (!result.ok) throw new Error(result.error);
   return result.value;
 }
 const api: Api = {
+  theme: () => invoke('theme'), setTheme: theme => invoke('theme-set', theme),
+  onTheme: listener => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: Theme) => listener(theme);
+    ipcRenderer.on('theme', handler); return () => ipcRenderer.removeListener('theme', handler);
+  },
   profiles: () => invoke('profiles'),
   saveProfile: profile => invoke('profile-save', profile),
   deleteProfile: id => invoke('profile-delete', { id }),

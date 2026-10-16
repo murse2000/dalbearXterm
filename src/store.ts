@@ -1,12 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { profileSchema, type Profile } from './model';
+import { profileSchema, themeSchema, type Profile, type Theme } from './model';
 
-const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()) });
+const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light') });
 type Settings = z.infer<typeof fileSchema>;
 export class Store {
-  private settings: Settings = { version: 1, profiles: [], knownHosts: {} };
+  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light' };
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private readonly directory: string) {}
   async load(): Promise<void> {
@@ -14,6 +14,12 @@ export class Store {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('설정 파일을 읽지 못했습니다. 원본을 보존한 상태로 파일 형식과 권한을 확인하세요.', { cause: error }); }
   }
   profiles(): Profile[] { return structuredClone(this.settings.profiles); }
+  theme(): Theme { return this.settings.theme; }
+  async setTheme(theme: Theme): Promise<Theme> {
+    const clean = themeSchema.parse(theme);
+    await this.update(next => { next.theme = clean; });
+    return clean;
+  }
   private update(change: (next: Settings) => void): Promise<void> {
     const operation = this.queue.then(async () => {
       const next = structuredClone(this.settings);

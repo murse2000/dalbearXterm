@@ -3,7 +3,8 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { HexHistory } from './hex-history';
-import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo } from './model';
+import { terminalThemes } from './theme';
+import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme } from './model';
 
 declare global { interface Window { terminal: Api } }
 const api = window.terminal;
@@ -24,6 +25,15 @@ interface View {
   log: boolean; logButton: HTMLButtonElement; connectButton: HTMLButtonElement; observer: ResizeObserver;
 }
 const views = new Map<string, View>();
+let theme: Theme = 'light';
+function applyTheme(next: Theme): void {
+  theme = next; document.documentElement.dataset.theme = next; set('theme-select', next);
+  for (const view of views.values()) view.term.options.theme = { ...terminalThemes[next] };
+}
+async function changeTheme(next: Theme): Promise<void> {
+  const select = element<HTMLSelectElement>('theme-select'); select.disabled = true;
+  try { applyTheme(await api.setTheme(next)); } finally { select.value = theme; select.disabled = false; }
+}
 function toast(message: string): void { element('toast').textContent = message; element('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { element('toast').hidden = true; }, 7000); }
 async function run(action: () => Promise<unknown>): Promise<void> { try { await action(); } catch (error) { toast((error as Error).message); } }
 function button(text: string, action: () => unknown, title = text): HTMLButtonElement {
@@ -117,7 +127,7 @@ async function send(view: View, bytes: Uint8Array): Promise<void> {
 async function connect(profile: Profile, credentials: Credentials): Promise<void> {
   if (views.size === 0) sidebarExpanded(false);
   const id = crypto.randomUUID();
-  const term = new Terminal({ cursorBlink: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { background: '#000000', foreground: '#dedede', cursor: '#b7d3b0', selectionBackground: '#31516c', black: '#000000', red: '#e87575', green: '#75cc83', yellow: '#e7cf74', blue: '#7aade5', magenta: '#c994df', cyan: '#73ced7', white: '#ededed' } });
+  const term = new Terminal({ cursorBlink: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { ...terminalThemes[theme] } });
   const fitAddon = new FitAddon(); const search = new SearchAddon(); term.loadAddon(fitAddon); term.loadAddon(search);
   const pane = document.createElement('article'); pane.className = 'session-pane'; pane.dataset.sessionId = id;
   const toolbar = document.createElement('div'); toolbar.className = 'session-toolbar';
@@ -257,6 +267,8 @@ function onEvent(event: AppEvent): void {
   }
 }
 api.onEvent(onEvent);
+api.onTheme(applyTheme);
+element('theme-select').addEventListener('change', () => { void run(() => changeTheme(value('theme-select') as Theme)); });
 for (const id of ['new-serial', 'empty-serial']) element(id).addEventListener('click', () => showDialog('serial'));
 for (const id of ['new-ssh', 'empty-ssh']) element(id).addEventListener('click', () => showDialog('ssh'));
 element('new-local').addEventListener('click', () => { void run(local); });
@@ -290,6 +302,7 @@ api.onMenu(action => {
   else if (action === 'disconnect' && current) void run(() => api.disconnect(current.id));
   else if (action === 'clear' && current) current.term.clear();
   else if (action === 'search' && current) current.pane.querySelector<HTMLInputElement>('.search-box')?.focus();
+  else if (action === 'theme-light' || action === 'theme-dark') void run(() => changeTheme(action === 'theme-dark' ? 'dark' : 'light'));
 });
 // 작은 도구 아이콘은 자체 SVG로 만들고 MobaXterm 자산을 포함하지 않는다.
 const icons: Record<string, { color: string; body: string }> = {
@@ -305,4 +318,4 @@ const icons: Record<string, { color: string; body: string }> = {
 for (const tool of document.querySelectorAll<HTMLElement>('[data-icon]')) {
   const icon = icons[tool.dataset.icon!]; const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('fill', icon.color); svg.setAttribute('stroke', icon.color); svg.setAttribute('stroke-width', '1.6'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = icon.body; tool.prepend(svg);
 }
-void run(async () => { profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); });
+void run(async () => { applyTheme(await api.theme()); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); });

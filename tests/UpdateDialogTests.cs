@@ -34,6 +34,7 @@ class UpdateDialogTests {
     Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
     var notes = System.IO.File.ReadAllText("release-notes/0.2.1.md").Replace("\r\n", "\n");
     if (args.Length > 0 && args[0] == "--preview") {
+      AppTheme.Set(Array.IndexOf(args, "--dark") >= 0 ? "dark" : "light");
       var preview = new FakeUpdater { Notes = notes }; var candidate = new UpdateConsent(preview); candidate.CheckAsync().GetAwaiter().GetResult();
       using (var dialog = new UpdateDialog(candidate, delegate { throw new Exception("미리보기에서 설치하면 안 됩니다."); })) { dialog.Text += " — 읽기 검증"; Application.Run(dialog); }
       return;
@@ -50,6 +51,11 @@ class UpdateDialogTests {
         var second = body.GetPositionFromCharIndex(text.IndexOf("- 두 번째"));
         using (var graphics = body.CreateGraphics()) Require(second.Y - first.Y >= body.Font.SizeInPoints * graphics.DpiY / 72, "릴리즈 항목의 줄바꿈 또는 글자 크기에 필요한 줄 간격이 사라졌습니다.");
         Require(first.Y - title.Y == 2 * (second.Y - first.Y), "제목과 첫 항목 사이의 빈 줄이 표시되지 않습니다.");
+        body.Select(text.IndexOf("첫 번째"), 3); var selection = body.SelectionStart;
+        AppTheme.Set("dark");
+        Require(dialog.BackColor == AppTheme.Background && body.ForeColor == AppTheme.Foreground && body.BackColor != SystemColors.Window, "열린 업데이트 창의 배경·글자색이 다크 테마를 따르지 않습니다.");
+        Require(body.Text == text && body.SelectionStart == selection && body.SelectionLength == 3, "테마 변경으로 내역이나 선택이 초기화됐습니다.");
+        AppTheme.Set("light"); Require(body.BackColor.ToArgb() == Color.White.ToArgb(), "일반 테마로 돌아오지 않았습니다.");
         CheckLayout(dialog);
         var originalSize = body.Size;
         dialog.ClientSize = new Size(dialog.ClientSize.Width + 160, dialog.ClientSize.Height + 120); Application.DoEvents();
@@ -60,6 +66,22 @@ class UpdateDialogTests {
       }
       Require(service.Downloads == 0 && service.Installs == 0, "창 확인·크기 변경·닫기로 다운로드하거나 설치하면 안 됩니다.");
     }
-    Console.WriteLine("업데이트 창 검증 통과: LF·CRLF·CR 문단/한글 줄 간격·확대/최소 크기·150% 배율·동의 없는 작업 방지");
+    using (var timer = new System.Windows.Forms.Timer { Interval = 100 }) {
+      Exception failure = null;
+      timer.Tick += delegate {
+        timer.Stop(); var message = Application.OpenForms["테마 동의 검증"];
+        if (message == null) foreach (Form form in Application.OpenForms) if (form.Text == "테마 동의 검증") message = form;
+        try {
+          Require(message != null && message.BackColor == AppTheme.Background, "새 확인 창이 다크 테마를 따르지 않습니다.");
+          Require(((Button)message.AcceptButton).DialogResult == DialogResult.No, "설치 확인 창의 기본 선택은 거부여야 합니다.");
+          AppTheme.Set("light"); Require(message.BackColor == AppTheme.Background, "열린 확인 창의 테마가 바뀌지 않습니다."); CheckLayout(message);
+        } catch (Exception error) { failure = error; }
+        finally { if (message != null) message.Close(); }
+      };
+      AppTheme.Set("dark"); timer.Start();
+      var result = AppTheme.ShowMessage(null, "연결을 정리하고 업데이트를 설치할까요?\n설치 여부는 직접 선택해야 합니다.", "테마 동의 검증", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+      if (failure != null) throw failure; Require(result != DialogResult.Yes, "창 닫기를 설치 동의로 처리하면 안 됩니다.");
+    }
+    Console.WriteLine("업데이트 창 검증 통과: 줄바꿈·한글 간격·크기 변경·테마 전환·내용/선택 유지·확인 창 기본 거부·동의 정책");
   }
 }

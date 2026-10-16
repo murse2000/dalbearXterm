@@ -1,6 +1,6 @@
 {
   "name": "dalbear-xterm",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "시리얼·SSH 장비 개발 터미널",
   "private": true,
   "main": "dist/main.js",

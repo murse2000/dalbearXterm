@@ -55,6 +55,19 @@ async function freePort() {
         await page.waitForFunction(() => document.querySelector('#ports .port, #ports .profile-empty'));
         report.startupMs.push(performance.now() - started);
         console.log(JSON.stringify({ launch: index + 1, startupMs: report.startupMs.at(-1) }));
+        assert.equal(await page.locator('#theme-select').inputValue(), index === 1 ? 'dark' : 'light', '재실행한 앱은 저장된 테마를 복원해야 합니다.');
+        async function selectTheme(theme) {
+          await page.locator('#theme-select').selectOption(theme);
+          await page.waitForFunction(theme => document.documentElement.dataset.theme === theme && !document.querySelector('#theme-select').disabled, theme);
+          assert.equal(await page.evaluate(() => window.terminal.theme()), theme);
+          assert.equal(JSON.parse(await fs.readFile(path.join(settings, 'settings.json'), 'utf8')).theme, theme);
+        }
+        if (index === 0) {
+          await selectTheme('dark'); await page.screenshot({ path: path.join(root, 'theme-dark-home.png') });
+          await page.locator('#new-ssh').click(); await page.screenshot({ path: path.join(root, 'theme-dark-connection.png') }); await page.locator('#dialog-close').click();
+          await page.locator('#new-local').click(); await page.waitForFunction(() => document.querySelector('#session-count').textContent.includes('1'));
+          assert.equal(await page.locator('.xterm-rows').evaluate(node => getComputedStyle(node).color), 'rgb(220, 229, 239)', '다크 테마에서 새로 연 터미널도 같은 팔레트를 사용해야 합니다.');
+        } else if (index === 1) await selectTheme('light');
         for (let click = 0; click < 3; click++) {
           const start = performance.now(); await page.locator('#new-ssh').click(); await page.waitForFunction(() => document.querySelector('#connection-dialog').open);
           report.uiClickMs.push(performance.now() - start); await page.locator('#dialog-close').click();
@@ -91,13 +104,31 @@ async function freePort() {
         await page.locator('.sendbar input').fill('DALBEAR_NATIVE_SSH_OK'); await page.locator('.sendbar button').click();
         await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_NATIVE_SSH_OK'));
         await page.locator('.session-toolbar').getByRole('button', { name: 'SFTP', exact: true }).click(); await page.waitForSelector('.file-name');
-        assert.ok((await page.locator('#file-list').innerText()).includes('remote.txt')); await page.locator('#files-close').click();
+        assert.ok((await page.locator('#file-list').innerText()).includes('remote.txt'));
+        await selectTheme('dark'); assert.equal(await page.locator('#files-panel').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 40, 51)');
+        await page.screenshot({ path: path.join(root, 'theme-dark-sftp.png') }); await selectTheme('light'); await page.locator('#files-close').click();
         await page.getByRole('button', { name: 'HEX', exact: true }).click(); await page.waitForFunction(() => /^00000000  /.test(document.querySelector('.hex-view').textContent)); await page.getByRole('button', { name: 'HEX', exact: true }).click();
         await page.locator('#new-local').click(); await page.waitForFunction(() => document.querySelector('#session-count').textContent.includes('2'));
         await page.locator('.session-pane:not([hidden]) .session-toolbar').getByRole('button', { name: '송신', exact: true }).click();
         await page.locator('.session-pane:not([hidden]) .sendbar input').fill('Write-Output DALBEAR_NATIVE_PTY_OK'); await page.locator('.session-pane:not([hidden]) .sendbar button').click();
         await page.waitForFunction(() => [...document.querySelectorAll('.xterm-rows')].some(rows => rows.textContent.includes('DALBEAR_NATIVE_PTY_OK')));
         await page.locator('#split').click(); assert.equal(await page.locator('.session-pane:not([hidden])').count(), 2);
+        await page.evaluate(() => { window.__themeTerminals = [...document.querySelectorAll('.xterm')]; });
+        for (const theme of ['dark', 'light']) {
+          await selectTheme(theme);
+          assert.ok(await page.evaluate(theme => {
+            const terminals = [...document.querySelectorAll('.xterm')];
+            const foreground = theme === 'dark' ? 'rgb(220, 229, 239)' : 'rgb(222, 222, 222)';
+            const background = theme === 'dark' ? 'rgb(17, 21, 28)' : 'rgb(0, 0, 0)';
+            return terminals.every((terminal, index) => terminal === window.__themeTerminals[index] && getComputedStyle(terminal.querySelector('.xterm-rows')).color === foreground)
+              && [...document.querySelectorAll('.terminal-wrap, .hex-view')].every(node => getComputedStyle(node).backgroundColor === background)
+              && document.querySelector('#session-count').textContent.includes('2')
+              && document.querySelector('#workspace').textContent.includes('DALBEAR_NATIVE_PTY_OK');
+          }, theme), '기존·분할 터미널의 색상이 함께 바뀌고 연결·출력 이력을 유지해야 합니다.');
+          await page.screenshot({ path: path.join(root, `theme-${theme}-split.png`) });
+        }
+        await page.locator('.session-pane:not([hidden]) .sendbar input').first().fill('DALBEAR_THEME_SSH_OK'); await page.locator('.session-pane:not([hidden]) .sendbar button').first().click();
+        await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_THEME_SSH_OK'));
         const openToggles = page.locator('.session-pane:not([hidden]) .session-toolbar button[aria-pressed="true"]');
         while (await openToggles.count()) await openToggles.first().click();
         await page.setViewportSize({ width: 1024, height: 640 });
@@ -139,6 +170,7 @@ async function freePort() {
         const stored = await fs.readFile(path.join(settings, 'settings.json'), 'utf8'); assert.ok(!stored.includes('test-fixture-password'));
         assert.deepEqual(errors, []);
         report.checks = ['화면·포트 준비', '렌더러 격리', '세션 저장', 'SSH 송수신', 'SFTP 목록', 'HEX 이력', '로컬 PowerShell', '분할 화면', '패널·송신줄 접기', '작은 창 도구 배치', '시리얼 신호 접기·오류 표시', '2MiB 연속 출력', '비밀번호 미저장'];
+        report.checks.push('일반·다크 저장/재실행 복원', '기존·분할 터미널 동시 테마 전환', '테마 전환 후 연결·출력 유지');
         await fs.writeFile(path.join(root, 'performance.json'), JSON.stringify(report, null, 2));
       } catch (error) { console.error(error); if (page) { await page.screenshot({ path: path.join(root, 'failure.png') }); console.error(await page.locator('body').innerText()); } throw error; }
       finally {

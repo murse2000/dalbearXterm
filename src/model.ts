@@ -13,6 +13,8 @@ export const credentialsSchema = z.object({ password: z.string().max(4096).optio
 export type Credentials = z.infer<typeof credentialsSchema>;
 export const idSchema = z.uuid();
 export const sizeSchema = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(1).max(500) });
+export const themeSchema = z.enum(['light', 'dark']);
+export type Theme = z.infer<typeof themeSchema>;
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export type AppEvent =
   | { type: 'data'; id: string; bytes: Uint8Array }
@@ -21,8 +23,11 @@ export type AppEvent =
   | { type: 'transfer'; id: string; transferId: string; bytes: number; total: number; state: 'running' | 'completed' | 'cancelled' | 'error'; message: string };
 export interface RemoteEntry { name: string; directory: boolean; size: number; modified: number; }
 export interface PortInfo { path: string; manufacturer?: string; serialNumber?: string; }
-export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search';
+export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'theme-light' | 'theme-dark';
 export interface Api {
+  theme(): Promise<Theme>;
+  setTheme(theme: Theme): Promise<Theme>;
+  onTheme(listener: (theme: Theme) => void): () => void;
   profiles(): Promise<Profile[]>;
   saveProfile(profile: Profile): Promise<Profile[]>;
   deleteProfile(id: string): Promise<Profile[]>;

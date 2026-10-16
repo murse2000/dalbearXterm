@@ -1,10 +1,11 @@
-import type { Api, AppEvent, MenuAction } from './model';
+import type { Api, AppEvent, MenuAction, Theme } from './model';
 
 const bridge = (window as unknown as { chrome: { webview: { postMessage(message: unknown): void; addEventListener(name: string, listener: (event: MessageEvent) => void): void } } }).chrome.webview;
 let sequence = 0;
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
 const events = new Set<(event: AppEvent) => void>();
 const menus = new Set<(action: MenuAction) => void>();
+const themes = new Set<(theme: Theme) => void>();
 function invoke<T>(action: string, body?: unknown): Promise<T> {
   return new Promise((resolve, reject) => { const requestId = ++sequence; pending.set(requestId, { resolve: resolve as (value: unknown) => void, reject }); bridge.postMessage({ kind: 'invoke', requestId, action, body }); });
 }
@@ -17,8 +18,11 @@ bridge.addEventListener('message', ({ data }) => {
     if (event.type === 'data') { const raw = atob(event.base64); event.bytes = Uint8Array.from(raw, char => char.charCodeAt(0)); delete event.base64; }
     for (const listener of events) listener(event);
   } else if (data.kind === 'menu') for (const listener of menus) listener(data.action);
+  else if (data.kind === 'theme') for (const listener of themes) listener(data.theme);
 });
 const api: Api = {
+  theme: () => invoke('theme'), setTheme: theme => invoke('theme-set', theme),
+  onTheme: listener => { themes.add(listener); return () => { themes.delete(listener); }; },
   profiles: () => invoke('profiles'), saveProfile: profile => invoke('profile-save', profile), deleteProfile: id => invoke('profile-delete', { id }), ports: () => invoke('ports'),
   connect: (id, profile, credentials, cols, rows) => invoke('connect', { id, profile, credentials, cols, rows }), disconnect: id => invoke('disconnect', { id }),
   write: (id, bytes) => invoke('write', { id, bytes: Array.from(bytes) }), resize: (id, cols, rows) => invoke('resize', { id, cols, rows }),

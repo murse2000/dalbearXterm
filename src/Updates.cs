@@ -68,12 +68,13 @@ sealed class UpdateDialog : Form {
     status.Text = "다운로드 대기 중"; layout.Controls.Add(status); layout.Controls.Add(progress);
     var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) }; buttons.Controls.Add(primary); buttons.Controls.Add(later); layout.Controls.Add(buttons); Controls.Add(layout);
     ActiveControl = later;
+    AppTheme.Apply(this);
     later.Click += delegate { Close(); };
     FormClosing += delegate { cancellation.Cancel(); };
     primary.Click += async delegate {
       if (downloading) return;
       if (update.Downloaded) {
-        var consent = MessageBox.Show(this, "모든 시리얼·SSH·로컬 셸 연결을 종료하고 업데이트한 뒤 재시작할까요?\n설정과 저장된 세션은 유지됩니다.", "업데이트 설치 동의", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        var consent = AppTheme.ShowMessage(this, "모든 시리얼·SSH·로컬 셸 연결을 종료하고 업데이트한 뒤 재시작할까요?\n설정과 저장된 세션은 유지됩니다.", "업데이트 설치 동의", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
         if (update.ApproveInstall(consent)) { primary.Enabled = false; later.Enabled = false; restart(); }
         return;
       }

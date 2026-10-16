@@ -6,7 +6,7 @@ const app = path.join(root, 'app'); const feed = path.join(root, 'feed'); await 
 const host = path.resolve('.tools/native-host-build');
 for (const file of ['Velopack.dll', 'Newtonsoft.Json.dll']) await copyFile(path.join(host, file), path.join(app, file));
 const compiler = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
-execFileSync(compiler, ['/nologo', '/utf8output', `/out:${path.join(app, 'UpdateIntegration.exe')}`, '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll', `/reference:${path.join(app, 'Velopack.dll')}`, path.resolve('src/Updates.cs'), path.resolve('tests/UpdateIntegration.cs')], { stdio: 'inherit' });
+execFileSync(compiler, ['/nologo', '/utf8output', `/out:${path.join(app, 'UpdateIntegration.exe')}`, '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll', `/reference:${path.join(app, 'Velopack.dll')}`, path.resolve('src/Updates.cs'), path.resolve('src/AppTheme.cs'), path.resolve('tests/UpdateIntegration.cs')], { stdio: 'inherit' });
 const vpk = path.resolve('.tools/vpk/vpk.exe');
 for (const version of ['0.1.0', '0.2.0']) execFileSync(vpk, ['pack', '--packId', 'DalbearUpdateTest', '--packVersion', version, '--packDir', app, '--mainExe', 'UpdateIntegration.exe', '--outputDir', feed, '--noInst', '--skip-updates', '--yes'], { stdio: 'inherit' });
 const portable = path.join(root, 'portable');

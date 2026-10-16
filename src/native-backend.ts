@@ -6,7 +6,7 @@ import { SerialPort } from 'serialport';
 import { Store } from './store';
 import { Connections } from './connections';
 import { Transfers } from './transfers';
-import { credentialsSchema, idSchema, profileSchema, sizeSchema, type AppEvent } from './model';
+import { credentialsSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent } from './model';
 
 const dataDirectory = process.env.DALBEAR_TEST_DATA || path.join(process.env.APPDATA!, 'dalbear-xterm');
 const dialogs = new Map<number, (result: unknown) => void>();
@@ -21,6 +21,7 @@ async function exists(file: string): Promise<boolean> {
 }
 async function main(): Promise<void> {
   const store = new Store(dataDirectory); await store.load();
+  send({ kind: 'theme', theme: store.theme() });
   const transfers = new Transfers();
   const connections = new Connections(store, question => dialog<boolean>('confirm', { title: question.previous ? 'SSH 호스트 키 변경' : 'SSH 서버 확인', message: `${question.previous ? '저장된 호스트 키와 다릅니다. 서버 관리자가 확인한 경우에만 승인하세요.' : '처음 연결하는 서버입니다. 지문을 확인하세요.'}\n\n${question.host}:${question.port}\n새 지문: ${question.fingerprint}${question.previous ? `\n기존 지문: ${question.previous}` : ''}` }));
   const output = new Map<string, Buffer[]>();
@@ -46,6 +47,8 @@ async function main(): Promise<void> {
   const actions = new Map<string, (body: unknown) => unknown>();
   function handle<T>(action: string, schema: z.ZodType<T>, handler: (body: T) => unknown): void { actions.set(action, body => handler(schema.parse(body))); }
   handle('profiles', z.undefined(), () => store.profiles());
+  handle('theme', z.undefined(), () => store.theme());
+  handle('theme-set', themeSchema, async theme => { await store.setTheme(theme); send({ kind: 'theme', theme }); return theme; });
   handle('profile-save', profileSchema, profile => store.save(profile)); handle('profile-delete', idBody, body => store.remove(body.id));
   handle('ports', z.undefined(), () => SerialPort.list());
   handle('connect', idBody.extend({ profile: profileSchema, credentials: credentialsSchema, ...sizeSchema.shape }), body => connections.connect(body.id, body.profile, body.credentials, body.cols, body.rows));
