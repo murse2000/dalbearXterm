@@ -61,4 +61,6 @@ npm run test:native
 
 태그 기반 GitHub Actions 자동 게시 템플릿은 `scripts/templates/release.yml`에 있습니다. 초기 GitHub OAuth 인증에는 workflow 권한이 없어 활성화하지 않았습니다. workflow 쓰기 권한이 있는 인증으로 `.github/workflows/release.yml`에 배치하면 사용할 수 있습니다. 앱 내 업데이트에는 이 워크플로가 필요하지 않습니다.
 
+게시 후에는 `npm run test:updates:github`로 실제 앱과 같은 .NET 4.8·Velopack GitHub 소스를 사용해 인증 없이 최신 버전을 읽고, 이전 버전에만 업데이트를 제안하는지 확인할 수 있습니다. 이 시험은 패키지를 다운로드하거나 설치하지 않습니다.
+
 기존 Electron 개발 호스트는 `npm start`로 유지합니다. 이 경로는 Electron 런타임과 해당 ABI의 모듈이 필요하며 공식 업데이트 대상은 Windows 네이티브 배포본입니다. REA 분석 도구는 제품 배포에 포함하지 않습니다.

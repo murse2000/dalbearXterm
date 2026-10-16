@@ -13,6 +13,7 @@
     "test:native": "node tests/native-ui.cjs",
     "test:updates": "node scripts/test-updates.mjs",
     "test:updates:integration": "node scripts/test-update-integration.mjs",
+    "test:updates:github": "node scripts/test-github-feed.mjs",
     "package": "npm run build && electron-builder --win dir --x64",
     "package:native": "node scripts/build-native.mjs",
     "package:release": "node scripts/package-release.mjs",
