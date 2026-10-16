@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>dalbearXterm</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="renderer.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <button id="new-serial" class="tool-button" data-icon="serial"><span>시리얼</span></button>
+    <button id="new-ssh" class="tool-button" data-icon="ssh"><span>SSH</span></button>
+    <button id="new-local" class="tool-button" data-icon="terminal"><span>로컬 터미널</span></button>
+    <span class="toolbar-divider"></span>
+    <button id="show-sessions" class="tool-button" data-icon="sessions"><span>세션</span></button>
+    <button id="split" class="tool-button" data-icon="split" title="현재 세션과 다른 세션을 나란히 보기"><span>화면 분할</span></button>
+    <button id="toolbar-files" class="tool-button" data-icon="files"><span>파일 전송</span></button>
+    <button id="toolbar-log" class="tool-button" data-icon="log"><span>로그 저장</span></button>
+    <span class="toolbar-divider"></span>
+    <button id="refresh-ports" class="tool-button" data-icon="refresh"><span>포트 새로고침</span></button>
+    <div class="brand"><img class="brand-mark" src="icon.svg" alt="달곰 터미널"><div>dalbear<span>Xterm</span><small>시리얼 · SSH · SFTP</small></div></div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <nav class="sidebar-rail"><button id="rail-sessions" class="selected" title="저장된 세션">세션</button><button id="rail-files" title="활성 SSH 세션의 SFTP">SFTP</button><button id="rail-ports" title="시리얼 포트 목록">포트</button></nav>
+      <div id="sidebar-content" class="sidebar-content">
+      <div class="sidebar-heading"><span>저장된 세션</span><span id="profile-count" class="badge">0</span></div>
+      <input id="profile-filter" class="filter" placeholder="세션 검색…" aria-label="저장된 세션 검색">
+      <div id="profiles" class="profile-list"></div>
+      <div class="port-box"><div class="sidebar-heading"><span>연결 가능한 COM 포트</span></div><div id="ports"></div></div>
+      <div class="sidebar-footer"><span class="live-dot"></span>로컬 작업 공간<span>v__APP_VERSION__</span></div>
+      </div>
+      <aside id="files-panel" class="files-panel" hidden>
+        <div class="sidebar-heading"><span>SFTP 파일</span><button id="files-close" class="icon-button" title="파일 패널 닫기">×</button></div>
+        <div id="files-session" class="files-session"></div>
+        <form id="files-form"><input id="remote-path" value="." aria-label="원격 경로"><button title="경로 이동">→</button></form>
+        <div class="file-actions"><button id="files-up">↑ 상위</button><button id="files-refresh">↻</button><button id="files-upload">↑ 업로드</button></div>
+        <div id="file-list" class="file-list"></div><div id="transfers" class="transfers"></div>
+      </aside>
+    </aside>
+    <main>
+      <nav class="workspace-bar"><button id="home-tab" class="home-tab" title="시작 화면">⌂</button><div id="tabs" class="tabs"></div><button id="tab-add" class="tab-add" title="새 연결">＋</button></nav>
+      <section id="empty" class="empty-state">
+        <div class="home-content">
+          <div class="home-brand"><img class="home-logo" src="icon.svg" alt="달곰 터미널"><div>dalbear<span>Xterm</span><small>시리얼 · SSH · 파일 전송</small></div></div>
+          <div class="home-actions"><button id="empty-local" class="start-terminal">로컬 터미널 시작</button><button id="empty-serial">새 시리얼 연결</button><button id="empty-ssh">새 SSH 연결</button></div>
+          <div class="home-section-heading">저장된 세션</div>
+          <div id="home-sessions" class="home-sessions"></div>
+          <div class="home-help">상단 도구 모음에서 연결을 만들거나 왼쪽의 저장된 세션을 선택하세요.</div>
+        </div>
+        <div class="empty-note">dalbearXterm __APP_VERSION__ · 연결 정보는 이 PC에 저장됩니다. 비밀번호와 개인키 암호는 저장하지 않습니다.</div>
+      </section>
+      <section id="workspace" class="workspace" hidden></section>
+      <footer class="status-bar"><span id="status">연결할 장비를 선택하세요.</span><span id="session-count">활성 연결 0</span></footer>
+    </main>
+  </div>
+  <dialog id="connection-dialog">
+    <form id="connection-form">
+      <div class="dialog-heading"><div><span class="eyebrow">세션 설정</span><h2 id="dialog-title">시리얼 연결</h2></div><button type="button" id="dialog-close" class="icon-button" aria-label="닫기">×</button></div>
+      <input type="hidden" id="profile-id"><input type="hidden" id="connection-kind">
+      <label>세션 이름<input id="session-name" required maxlength="100" placeholder="예: 개발 보드 콘솔"></label>
+      <div id="serial-fields">
+        <div class="form-row"><label>COM 포트<select id="serial-port" required></select></label><label>전송 속도 (bps)<input id="baud-rate" type="number" value="115200" min="50" max="4000000" required list="baud-rates"><datalist id="baud-rates"><option value="9600"><option value="57600"><option value="115200"><option value="460800"><option value="921600"></datalist></label></div>
+        <div class="form-row triple"><label>데이터 비트<select id="data-bits"><option>8</option><option>7</option><option>6</option><option>5</option></select></label><label>패리티<select id="parity"><option value="none">없음</option><option value="even">Even</option><option value="odd">Odd</option><option value="mark">Mark</option><option value="space">Space</option></select></label><label>정지 비트<select id="stop-bits"><option>1</option><option>1.5</option><option>2</option></select></label></div>
+        <div class="form-row"><label>흐름 제어<select id="flow-control"><option value="none">없음</option><option value="hardware">RTS/CTS</option><option value="software">XON/XOFF</option></select></label><label>Enter 줄 끝<select id="eol"><option value="cr">CR</option><option value="lf">LF</option><option value="crlf">CR+LF</option><option value="none">없음</option></select></label></div>
+        <label class="check"><input type="checkbox" id="local-echo">로컬 에코</label>
+        <p class="form-note">포트 개방 시 장비가 재시작될 수 있습니다. DTR/RTS와 BREAK는 연결 후 명시적으로 적용합니다.</p>
+      </div>
+      <div id="ssh-fields" hidden>
+        <div class="form-row host-row"><label>호스트<input id="ssh-host" placeholder="192.168.0.10"></label><label>포트<input id="ssh-port" type="number" value="22" min="1" max="65535"></label></div>
+        <label>사용자명<input id="ssh-user" autocomplete="username"></label>
+        <label>인증 방식<select id="ssh-auth"><option value="key">개인키</option><option value="password">비밀번호</option></select></label>
+        <div id="key-fields"><label>개인키 경로<div class="input-action"><input id="ssh-key" placeholder="개인키 파일을 선택하세요"><button id="choose-key" type="button">찾기</button></div></label><label>개인키 암호 (필요한 경우)<input id="ssh-passphrase" type="password" autocomplete="off"></label></div>
+        <label id="password-field" hidden>비밀번호<input id="ssh-password" type="password" autocomplete="off"></label>
+        <p class="form-note">서버 지문을 확인한 뒤 접속합니다. 비밀번호·개인키 내용·키 암호는 세션에 저장하지 않습니다.</p>
+      </div>
+      <div id="form-error" class="form-error" role="alert"></div>
+      <div class="dialog-footer"><label class="check"><input id="save-session" type="checkbox" checked>세션 저장</label><button id="save-only" type="button">저장만</button><button id="connect-button" class="primary" type="submit">연결하기 ↗</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

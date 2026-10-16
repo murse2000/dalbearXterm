@@ -1,0 +1,12 @@
+node_modules/
+.tools/
+dist/
+release/
+test-results/
+*.log
+.test-data/
+src/bin/
+src/obj/
+research/*
+!research/PERFORMANCE.md
+scripts/verify-device.ts

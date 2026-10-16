@@ -1,0 +1,62 @@
+# dalbearXterm
+
+<img src="assets/icon.png" width="96" alt="달곰 터미널 아이콘">
+
+Windows용 시리얼·SSH 장비 개발 터미널입니다. 달과 곰, 터미널 프롬프트를 조합한 전용 아이콘을 사용합니다. MobaXterm의 밝은 도구 모음·세션 패널·검은 터미널 구성을 참고했으며, 해당 제품의 코드나 이미지 자산을 배포하지 않습니다.
+
+## 다운로드
+
+[최신 GitHub 릴리즈](https://github.com/murse2000/dalbearXterm/releases/latest)에서 선택합니다.
+
+- **설치형:** `DalbearXterm-win-Setup.exe`
+- **포터블:** `DalbearXterm-win-Portable.zip`을 전부 압축 해제한 뒤 `current/dalbearXterm.exe` 실행
+
+Windows 10/11 x64, .NET Framework 4.8, Microsoft Edge WebView2 Runtime이 필요합니다. 설치형은 필요한 런타임을 확인합니다. 현재 배포본은 인증서로 서명하지 않았습니다. 이전 0.1.0은 이번 설치형 또는 포터블로 한 번 전환해야 이후 앱 내 업데이트를 사용할 수 있습니다.
+
+## 업데이트와 사용자 동의
+
+공식 배포본은 화면 표시 후 GitHub Releases의 새 안정 버전을 자동 확인합니다. 도움말 → 업데이트 확인에서도 확인할 수 있습니다. 시작 화면을 네트워크 응답 때문에 기다리게 하지 않습니다.
+
+1. 새 버전을 안내합니다. **‘동의하고 다운로드’ 이전에는 업데이트 패키지를 받지 않습니다.**
+2. 승인한 패키지를 다운로드하고 무결성을 검사합니다. 다운로드 취소가 가능합니다.
+3. **‘설치하고 재시작’과 설치 확인에 동의한 경우에만** 연결·로그·전송을 정리하고 업데이트한 뒤 재시작합니다.
+
+‘나중에’, 창 닫기, 일반 앱 종료·재실행은 설치 동의가 아닙니다. 다운로드해 둔 패키지가 있어도 시작 시 자동 적용을 하지 않습니다. 손상된 패키지는 거부합니다. GitHub 인증 토큰을 앱에 포함하지 않습니다. 업데이트 엔진은 [Velopack](https://github.com/velopack/velopack) 1.2.0입니다.
+
+## 기능
+
+- 시리얼: COM 포트 목록, 전송 속도·데이터 비트·패리티·정지 비트·흐름 제어, CR/LF/CRLF, 로컬 에코, DTR/RTS·BREAK.
+- SSH: 비밀번호·개인키·키 암호, 호스트 키 지문 확인·변경 경고, 터미널 크기 변경.
+- SFTP: 경로 이동, 업로드·다운로드, 진행률·취소, 기존 파일 교체 확인, 임시 파일을 통한 완료 처리.
+- 로컬 PowerShell, 세션 저장·검색, 터미널 탭·분할·검색, TEXT/HEX 전송, HEX 수신 보기.
+- 수신 원본 `.bin`과 타임스탬프 포함 UTF-8 `.bin.txt` 로그.
+
+설정은 설치형·포터블 모두 `%APPDATA%/dalbear-xterm/settings.json`에 저장합니다. 비밀번호·개인키 내용·키 암호는 저장하지 않습니다. 업데이트가 설정 파일을 교체하지 않습니다.
+
+DTR/RTS는 포트를 열 때 드라이버 기본값의 영향을 받습니다. 실제 장비에서 제어 신호와 장시간 수신을 검증해야 합니다. 수신 대기열 한도를 넘으면 연결 중단 사실을 표시합니다. 기존 원격 파일의 원자적 교체에는 OpenSSH posix-rename 확장이 필요합니다. 텍스트 로그는 청크 경계의 모든 제어 시퀀스를 완전한 화면으로 재구성하지 않습니다.
+
+## 빌드와 검증
+
+Windows x64, Node.js 22.12 이상, .NET SDK 8이 필요합니다.
+
+```powershell
+npm ci --ignore-scripts
+npm run typecheck
+npm test
+npm run package:release
+npm run test:updates
+npm run test:updates:integration
+npm run test:native
+```
+
+최종 배포 파일은 `release/github`에 생성됩니다. 원본 네이티브 빌드는 `release/native-win-x64`이며 업데이트용 설치 메타데이터가 없으므로 이 경로에서는 앱 내 업데이트를 제공하지 않습니다. GitHub 릴리즈의 설치형·포터블을 사용하세요.
+
+`npm test`는 가상 시리얼과 로컬 SSH·SFTP를 사용합니다. 네이티브 UI 시험은 세션 저장·SSH 송수신·SFTP 목록·HEX·PowerShell·분할 화면·수신 SHA-256·정상 종료를 검증합니다. 업데이트 시험은 동의 거부, 실패, 설치 보류, 재실행, 중복 설치 방지와 실제 구버전 포터블의 손상 패키지 거부·버전 교체·설정 보존을 검증합니다. 실제 장비에는 시험 명령을 송신하지 않습니다.
+
+60분 연속 수신·8시간 다중 세션·실장비 제어 신호·깨끗한 PC 검증은 별도로 필요합니다. X11·RDP·VNC·자동 플래싱은 구현 범위에 포함하지 않습니다. 성능 측정 조건은 [PERFORMANCE.md](research/PERFORMANCE.md)에 있습니다.
+
+## 다음 릴리즈
+
+`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비하고 `v<버전>` 태그를 푸시합니다. GitHub Actions가 빌드·통신 시험·동의 정책·실제 업데이트 시험을 통과한 뒤 설치형·포터블·업데이트 패키지·피드·SHA256SUMS를 릴리즈에 게시합니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
+
+기존 Electron 개발 호스트는 `npm start`로 유지합니다. 이 경로는 Electron 런타임과 해당 ABI의 모듈이 필요하며 공식 업데이트 대상은 Windows 네이티브 배포본입니다. REA 분석 도구는 제품 배포에 포함하지 않습니다.

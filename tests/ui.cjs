@@ -1,0 +1,69 @@
+const { _electron: electron } = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { createFixture } = require('./fixture.cjs');
+
+(async () => {
+  const root = path.resolve(process.env.DALBEAR_EXE ? 'test-results/packaged' : 'test-results/ui');
+  await fs.mkdir(root, { recursive: true });
+  const run = await fs.mkdtemp(path.join(root, 'run-'));
+  const fixture = await createFixture(run);
+  await fs.writeFile(path.join(run, 'remote.txt'), 'SFTP UI 검증');
+  const env = { ...process.env, DALBEAR_TEST_DATA: path.join(run, 'settings') };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const application = await electron.launch({ executablePath: process.env.DALBEAR_EXE || require('electron'), args: process.env.DALBEAR_EXE ? [] : ['.'], cwd: path.resolve('.'), env, timeout: 30000 });
+  const errors = [];
+  try {
+    const page = await application.firstWindow();
+    page.on('pageerror', error => errors.push(error.message));
+    await page.waitForSelector('#empty:not([hidden])');
+    await page.screenshot({ path: path.join(root, '01-workspace.png') });
+    assert.equal(await page.evaluate(() => typeof require), 'undefined');
+    assert.equal(await page.evaluate(() => typeof process), 'undefined');
+    await page.locator('#new-serial').click();
+    await page.locator('#session-name').fill('시리얼 저장 테스트');
+    if (await page.locator('#serial-port option[value="COM3"]').count()) await page.locator('#serial-port').selectOption('COM3');
+    await page.screenshot({ path: path.join(root, '02-serial-settings.png') });
+    await page.locator('#save-only').click();
+    await page.waitForSelector('#connection-dialog:not([open])', { state: 'attached' });
+    assert.ok((await page.evaluate(() => window.terminal.profiles())).some(profile => profile.name === '시리얼 저장 테스트'));
+    await application.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
+    await page.evaluate(() => { window.__received = ''; window.terminal.onEvent(event => { if (event.type === 'data') window.__received += new TextDecoder().decode(event.bytes); }); });
+    await page.locator('#new-ssh').click();
+    await page.locator('#session-name').fill('로컬 SSH 검증');
+    await page.locator('#ssh-host').fill('127.0.0.1'); await page.locator('#ssh-port').fill(String(fixture.port)); await page.locator('#ssh-user').fill('tester'); await page.locator('#ssh-auth').selectOption('password'); await page.locator('#ssh-password').fill('test-fixture-password');
+    await page.locator('#connect-button').click();
+    await page.waitForFunction(() => document.querySelector('.session-message')?.textContent === '연결됨');
+    await page.locator('.sendbar input').fill('DALBEAR_UI_SSH_OK'); await page.locator('.sendbar button').click();
+    await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_UI_SSH_OK'));
+    await page.locator('.session-toolbar').getByRole('button', { name: 'SFTP', exact: true }).click(); await page.waitForSelector('.file-name');
+    assert.ok((await page.locator('#file-list').innerText()).includes('remote.txt'));
+    await page.locator('#files-close').click();
+    await page.locator('#home-tab').click(); await page.waitForSelector('#empty:not([hidden])');
+    assert.ok((await page.locator('#home-sessions').innerText()).includes('로컬 SSH 검증'));
+    await page.locator('.tab').click();
+    await application.evaluate(({ dialog }, logPath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: logPath }); }, path.join(run, 'capture.bin'));
+    await page.getByRole('button', { name: '○ 로그', exact: true }).click(); await page.getByRole('button', { name: '● 로그 종료', exact: true }).waitFor();
+    await page.locator('.sendbar input').fill('DALBEAR_UI_LOG_OK'); await page.locator('.sendbar button').click(); await page.waitForFunction(() => window.__received.includes('수신: DALBEAR_UI_LOG_OK'));
+    await page.getByRole('button', { name: '● 로그 종료', exact: true }).click(); await page.getByRole('button', { name: '○ 로그', exact: true }).waitFor();
+    assert.ok((await fs.readFile(path.join(run, 'capture.bin'))).includes(Buffer.from('DALBEAR_UI_LOG_OK')));
+    await page.getByRole('button', { name: 'HEX', exact: true }).click();
+    await page.waitForFunction(() => /^00000000  /.test(document.querySelector('.hex-view').textContent));
+    await page.getByRole('button', { name: 'HEX', exact: true }).click();
+    await page.locator('#new-local').click();
+    await page.waitForFunction(() => document.querySelector('#session-count').textContent.includes('2'));
+    await page.locator('.session-pane:not([hidden]) .sendbar input').fill('Write-Output DALBEAR_UI_PTY_OK'); await page.locator('.session-pane:not([hidden]) .sendbar button').click();
+    await page.waitForFunction(() => window.__received.includes('DALBEAR_UI_PTY_OK'));
+    await page.locator('#split').click(); assert.equal(await page.locator('.session-pane:not([hidden])').count(), 2);
+    await page.waitForFunction(() => [...document.querySelectorAll('.xterm-rows')].some(rows => rows.textContent.includes('DALBEAR_UI_PTY_OK')));
+    await page.waitForFunction(() => [...document.querySelectorAll('.xterm-rows')].some(rows => rows.textContent.includes('DALBEAR_UI_LOG_OK')));
+    await page.screenshot({ path: path.join(root, '03-connected-split.png') });
+    const settings = await fs.readFile(path.join(run, 'settings/settings.json'), 'utf8'); assert.ok(!settings.includes('test-fixture-password'));
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ passed: true, checks: ['화면 로드', '렌더러 격리', '세션 저장', 'SSH 연결·송신', 'SFTP 목록', '로그 저장', '로컬 PowerShell', '분할 화면', '자격 증명 미저장'], screenshots: root }, null, 2));
+  } catch (error) {
+    const pages = application.windows(); if (pages[0]) { await pages[0].screenshot({ path: path.join(root, 'failure.png') }); console.error(await pages[0].locator('body').innerText()); }
+    throw error;
+  } finally { await application.close(); await fixture.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

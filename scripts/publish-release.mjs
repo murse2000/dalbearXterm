@@ -1,0 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import { readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+const tag = `v${version}`;
+if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== tag) throw new Error('태그와 package.json 버전이 다릅니다.');
+const repository = 'murse2000/dalbearXterm';
+const assets = (await readdir('release/github')).map(name => path.resolve('release/github', name));
+execFileSync('gh', ['release', 'create', tag, ...assets, '--repo', repository, '--verify-tag', '--draft', '--title', `dalbearXterm ${version}`, '--notes-file', `release-notes/${version}.md`], { stdio: 'inherit' });
+execFileSync('gh', ['release', 'edit', tag, '--repo', repository, '--draft=false', '--latest'], { stdio: 'inherit' });

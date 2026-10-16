@@ -1,0 +1,45 @@
+# 실행·수신 성능 개선
+
+2026-10-16, 사용 중인 Windows PC에서 측정했다. 측정은 실행 요청부터 실제 시작 화면과 저장 세션·COM 포트 목록이 준비되는 시점까지다. SSH 연결·서버 응답 시간은 시작 시간에 포함하지 않는다.
+
+| 항목 | 기존 Electron 배포본 | 네이티브 개선판 |
+| --- | ---: | ---: |
+| 전체 화면·세션·포트 준비 3회 | 8.895 / 12.241 / 12.100초 | 2.281 / 1.364 / 1.371초 |
+| 2MiB SSH 출력·화면 완료 | 646ms | 261ms |
+| 출력 중 16ms 타이머 최대 추가 지연 | 43.1ms | 14.5ms |
+| 설정 창 클릭·표시 | 36~63ms | 35~144ms |
+
+네이티브 첫 측정은 최종 빌드 직후 새 테스트 설정·WebView2 데이터 폴더로 실행한 결과다. 이후 두 측정은 같은 데이터 폴더를 재사용했다. PC 재부팅 직후나 다른 PC의 결과는 측정하지 않았다. 모든 실행을 1~2초 이내로 보장하는 결과는 아니다. 설정 창 클릭 자체의 개선은 확인되지 않았으며, 개선 범위는 앱 시작과 연속 수신 처리다.
+
+출력 비교는 양쪽 모두 CPU 프로파일러를 끈 결과다. 최초 원인 분석 때 프로파일러를 켠 기존 출력 측정은 676ms였으며, 최종 비교를 위해 별도로 측정한 646ms를 표에 사용했다.
+
+## 원인 확인
+
+- 디버거 없는 기존 실행도 화면 로드까지 8.959초였다. Playwright 연결만의 지연이 아니었다.
+- 앱 모듈 초기화는 약 136ms, 렌더러 스크립트 실행은 약 11ms였다. 모듈 로딩만 지연시키는 수정으로는 수초의 지연을 설명하거나 해결할 수 없었다.
+- 앱 코드 없는 Electron 창도 약 8.8초가 걸렸다. GPU 비활성화와 Electron 43 비교 실행으로 시작 시간이 개선되지 않았다. 해당 옵션·버전은 제품에 적용하지 않았다.
+- Windows 네이티브 창과 WebView2 비교 실행은 약 1.39초였다. 실제 화면·기존 연결 코드를 옮긴 뒤 위 표의 전체 앱 결과를 확인했다.
+- 기존 수신 CPU 프로파일에서 숨겨진 HEX 문자열 변환·누적이 반복됐다. HEX를 열 때까지 원본 바이트만 제한된 크기로 보관하고, 표시 중에는 프레임당 한 번만 문자열로 변환하도록 변경했다.
+- 네이티브 중계에서 1KiB 청크를 개별 전달할 때 2MiB 출력은 약 0.76초였다. 같은 이벤트 루프의 청크를 합쳐 최대 32KiB 단위로 전달한 뒤 0.26초가 됐다. 바이트 순서·내용은 SHA-256으로 검증했다.
+
+## 종료 처리
+
+연결·로그·SFTP 전송 정리가 끝난 응답을 받은 뒤 창과 소유한 작업 개체를 종료한다. 사용자가 실행해 둔 기존 앱이나 다른 Node 프로세스는 종료하지 않는다. 네이티브 UI 시험의 종료 측정에는 PowerShell을 통한 창 닫기 요청 비용도 포함된다. 최종 측정은 2.369 / 0.552 / 0.538초였다.
+
+node-pty 1.1.0의 기존 ConPTY 종료 경로에는 콘솔 목록 수집과 콘솔 종료의 경쟁으로 5초 타임아웃이 남을 수 있다. 사용한 버전 소스와 [동일한 upstream 이슈](https://github.com/microsoft/node-pty/issues/952)를 확인했다. 종료 완료를 Node 이벤트 루프의 자연 종료에 맡기는 대신, 로그·전송 정리 완료 응답과 Windows 작업 개체의 소유 관계로 종료 시점을 관리했다.
+
+## 검증·재현
+
+```powershell
+npm run typecheck
+npm test
+npm run package:native
+npm run test:native
+npm run test:ui
+```
+
+단위·통합 시험 7개와 네이티브 UI 시험을 통과했다. 네이티브 시험은 로컬 실제 SSH·SFTP 서버를 사용하고, 포트 목록만 읽는다. COM 장비에 시험 명령을 송신하지 않는다. Electron UI 시험으로 로그 저장 회귀도 확인했다. 개인키와 비밀번호는 배포 파일이나 성능 보고서에 포함하지 않는다.
+
+실측 원본: `research/performance-before.json`, `research/performance-before-no-profiler.json`, `research/performance-native.json`. 자세한 CPU 프로파일과 비교용 추적 자료는 배포에 포함하지 않는 `test-results/performance`에 있다.
+
+공식 자료: [Electron 성능 가이드](https://www.electronjs.org/docs/latest/tutorial/performance), [xterm.js 흐름 제어](https://xtermjs.org/docs/guides/flowcontrol/), [WebView2 보안 지침](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security).

@@ -1,0 +1,69 @@
+{
+  "name": "dalbear-xterm",
+  "version": "0.2.0",
+  "description": "시리얼·SSH 장비 개발 터미널",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:ui": "npm run build && node tests/ui.cjs",
+    "test:native": "node tests/native-ui.cjs",
+    "test:updates": "node scripts/test-updates.mjs",
+    "test:updates:integration": "node scripts/test-update-integration.mjs",
+    "package": "npm run build && electron-builder --win dir --x64",
+    "package:native": "node scripts/build-native.mjs",
+    "package:release": "node scripts/package-release.mjs",
+    "postinstall": "electron-builder install-app-deps",
+    "rea:verify": "node scripts/rea-inspect.mjs"
+  },
+  "build": {
+    "appId": "com.hrobotics.dalbearxterm",
+    "productName": "dalbearXterm",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/node-pty/**"
+    ],
+    "win": {
+      "target": "dir"
+    }
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/xterm": "6.0.0",
+    "node-pty": "1.1.0",
+    "serialport": "13.0.0",
+    "ssh2": "1.17.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@playwright/test": "1.64.1",
+    "@resvg/resvg-js": "2.6.2",
+    "@serialport/binding-mock": "10.2.2",
+    "@types/node": "26.6.5",
+    "@types/ssh2": "1.15.6",
+    "electron": "44.7.2",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "@serialport/bindings-cpp@13.0.0": true,
+    "node-pty@1.1.0": true,
+    "esbuild@0.28.2": true,
+    "ssh2@1.17.0": true,
+    "cpu-features@0.0.10": true
+  }
+}
