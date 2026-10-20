@@ -63,6 +63,8 @@ npm run package:release
 npm run test:updates
 npm run test:updates:integration
 npm run test:native
+npm run test:ui
+npm run test:ui:palette
 ```
 
 최종 배포 파일은 `release/github`에 생성됩니다. 원본 네이티브 빌드는 `release/native-win-x64`이며 업데이트용 설치 메타데이터가 없으므로 이 경로에서는 앱 내 업데이트를 제공하지 않습니다. GitHub 릴리즈의 설치형·포터블을 사용하세요.
@@ -73,7 +75,7 @@ npm run test:native
 
 ## 다음 릴리즈
 
-`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비합니다. 빌드·통신 시험·동의 정책·실제 업데이트 시험을 통과한 뒤 `v<버전>` 태그를 푸시하고 `node scripts/publish-release.mjs`로 게시합니다. 설치형·포터블·업데이트 패키지·피드·SHA256SUMS가 함께 올라갑니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
+`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비합니다. 빌드·통신 시험·UI 시험(`npm run test:ui`, `npm run test:ui:palette`)·동의 정책·실제 업데이트 시험을 통과한 뒤 `v<버전>` 태그를 푸시하고 `node scripts/publish-release.mjs`로 게시합니다. 설치형·포터블·업데이트 패키지·피드·SHA256SUMS가 함께 올라갑니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
 
 태그 기반 GitHub Actions 자동 게시 템플릿은 `scripts/templates/release.yml`에 있습니다. 초기 GitHub OAuth 인증에는 workflow 권한이 없어 활성화하지 않았습니다. workflow 쓰기 권한이 있는 인증으로 `.github/workflows/release.yml`에 배치하면 사용할 수 있습니다. 앱 내 업데이트에는 이 워크플로가 필요하지 않습니다.
 
