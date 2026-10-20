@@ -29,6 +29,7 @@ Windows 10/11 x64, .NET Framework 4.8, Microsoft Edge WebView2 Runtime이 필요
 - SSH: 비밀번호·개인키·키 암호, 호스트 키 지문 확인·변경 경고, 터미널 크기 변경.
 - SFTP: 경로 이동, 업로드·다운로드, 진행률·취소, 기존 파일 교체 확인, 임시 파일을 통한 완료 처리.
 - 로컬 PowerShell, 세션 저장·검색, 터미널 탭·분할·검색, TEXT/HEX 전송, HEX 수신 보기.
+- 명령 팔레트(Ctrl+Shift+P), ‘명령 라이브러리 관리’(이름·TEXT/HEX·줄 끝 저장, 활성 세션 즉시 실행).
 - 고밀도 UI: 첫 터미널을 열면 왼쪽 패널을 접습니다. 세션 버튼으로 펼치거나 접고, SSH·로컬의 송신줄은 ‘송신’, 시리얼 제어 신호는 ‘신호’ 버튼으로 표시합니다. 터미널 글자 크기는 유지합니다.
 - 수신 원본 `.bin`과 타임스탬프 포함 UTF-8 `.bin.txt` 로그.
 
@@ -62,6 +63,8 @@ npm run package:release
 npm run test:updates
 npm run test:updates:integration
 npm run test:native
+npm run test:ui
+npm run test:ui:palette
 ```
 
 최종 배포 파일은 `release/github`에 생성됩니다. 원본 네이티브 빌드는 `release/native-win-x64`이며 업데이트용 설치 메타데이터가 없으므로 이 경로에서는 앱 내 업데이트를 제공하지 않습니다. GitHub 릴리즈의 설치형·포터블을 사용하세요.
@@ -72,7 +75,7 @@ npm run test:native
 
 ## 다음 릴리즈
 
-`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비합니다. 빌드·통신 시험·동의 정책·실제 업데이트 시험을 통과한 뒤 `v<버전>` 태그를 푸시하고 `node scripts/publish-release.mjs`로 게시합니다. 설치형·포터블·업데이트 패키지·피드·SHA256SUMS가 함께 올라갑니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
+`package.json`·`package-lock.json` 버전과 `release-notes/<버전>.md`를 준비합니다. 빌드·통신 시험·UI 시험(`npm run test:ui`, `npm run test:ui:palette`)·동의 정책·실제 업데이트 시험을 통과한 뒤 `v<버전>` 태그를 푸시하고 `node scripts/publish-release.mjs`로 게시합니다. 설치형·포터블·업데이트 패키지·피드·SHA256SUMS가 함께 올라갑니다. 새 릴리즈 게시 자체는 사용자의 앱을 강제로 업데이트하지 않습니다.
 
 태그 기반 GitHub Actions 자동 게시 템플릿은 `scripts/templates/release.yml`에 있습니다. 초기 GitHub OAuth 인증에는 workflow 권한이 없어 활성화하지 않았습니다. workflow 쓰기 권한이 있는 인증으로 `.github/workflows/release.yml`에 배치하면 사용할 수 있습니다. 앱 내 업데이트에는 이 워크플로가 필요하지 않습니다.
 

@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import { HexHistory } from './hex-history';
 import { terminalThemes } from './theme';
 import { homeTextColor, readHomeLogo } from './home-appearance';
-import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme, type HomeAppearance } from './model';
+import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme, type HomeAppearance, type SavedCommand } from './model';
 
 declare global { interface Window { terminal: Api } }
 const api = window.terminal;
@@ -31,6 +31,8 @@ let homeAppearance: HomeAppearance = { background: null, logoDataUrl: null };
 let homeDraft = { ...homeAppearance };
 let homeLogoRequest = 0;
 let homeSaving = false;
+let commands: SavedCommand[] = [];
+let commandPaletteSelection = 0;
 function applyTheme(next: Theme): void {
   theme = next; document.documentElement.dataset.theme = next; set('theme-select', next);
   for (const view of views.values()) view.term.options.theme = { ...terminalThemes[next] };
@@ -49,6 +51,90 @@ function applyHomeAppearance(appearance: HomeAppearance): void {
   homeAppearance = appearance; homeBackground(element('empty'), appearance.background);
   const logo = element<HTMLImageElement>('home-logo'); logo.src = appearance.logoDataUrl || 'icon.svg'; logo.alt = appearance.logoDataUrl ? '사용자 지정 홈 로고' : '달곰 터미널';
   element<HTMLButtonElement>('customize-home').disabled = false;
+}
+async function loadCommands(): Promise<void> {
+  commands = await api.commands();
+  renderCommandPaletteList();
+  renderCommandLibraryList();
+}
+function renderCommandPaletteList(): void {
+  const list = element('command-palette-list'); list.replaceChildren();
+  const filter = value('command-palette-filter').toLowerCase();
+  const filtered = commands.filter(command => `${command.name} ${command.body}`.toLowerCase().includes(filter));
+  if (!filtered.length) {
+    const empty = document.createElement('div'); empty.className = 'profile-empty'; empty.textContent = commands.length ? '검색 결과가 없습니다.' : '저장된 명령이 없습니다. 라이브러리에서 추가하세요.'; list.append(empty);
+    commandPaletteSelection = 0;
+    return;
+  }
+  if (commandPaletteSelection >= filtered.length) commandPaletteSelection = 0;
+  filtered.forEach((command, index) => {
+    const row = document.createElement('button'); row.type = 'button'; row.className = `command-palette-row${index === commandPaletteSelection ? ' selected' : ''}`; row.setAttribute('role', 'option');
+    const title = document.createElement('strong'); title.textContent = command.name;
+    const body = document.createElement('small'); body.textContent = command.mode === 'hex' ? `${command.body} · HEX` : `${command.body}${command.eol !== 'none' ? ` · ${command.eol.toUpperCase()}` : ''}`;
+    row.append(title, body);
+    row.addEventListener('click', () => { commandPaletteSelection = index; renderCommandPaletteList(); });
+    row.addEventListener('dblclick', () => { void run(() => executeCommand(command.id)); });
+    list.append(row);
+  });
+}
+function openCommandPalette(): void {
+  if (!commands.length) void loadCommands();
+  commandPaletteSelection = 0;
+  input('command-palette-filter').value = '';
+  renderCommandPaletteList();
+  element<HTMLDialogElement>('command-palette-dialog').showModal();
+  input('command-palette-filter').focus();
+}
+async function executeCommand(commandId: string): Promise<void> {
+  const target = activeId ? views.get(activeId) : undefined;
+  if (!target || target.state !== 'connected') { toast('먼저 세션을 연결하세요.'); return; }
+  await api.runCommand(commandId, target.id);
+  element<HTMLDialogElement>('command-palette-dialog').close();
+}
+function renderCommandLibraryList(): void {
+  const list = element('command-library-list'); list.replaceChildren();
+  if (!commands.length) { const empty = document.createElement('li'); empty.className = 'profile-empty'; empty.textContent = '저장된 명령이 없습니다.'; list.append(empty); return; }
+  for (const command of commands) {
+    const item = document.createElement('li'); item.className = 'command-library-row';
+    const label = document.createElement('div'); const name = document.createElement('strong'); name.textContent = command.name; const body = document.createElement('small'); body.textContent = command.mode === 'hex' ? `${command.body} · HEX` : `${command.body}${command.eol !== 'none' ? ` · ${command.eol.toUpperCase()}` : ''}`; label.append(name, body);
+    const edit = button('편집', () => fillCommandForm(command));
+    const remove = button('삭제', async () => { if (confirm(`저장된 명령 "${command.name}"을 삭제할까요?`)) { commands = await api.deleteCommand(command.id); renderCommandPaletteList(); renderCommandLibraryList(); } });
+    item.append(label, remove, edit); list.append(item);
+  }
+}
+function fillCommandForm(command: SavedCommand | null): void {
+  input('command-id').value = command?.id || crypto.randomUUID();
+  input('command-name').value = command?.name || '';
+  input('command-mode').value = command?.mode || 'text';
+  input('command-eol').value = command?.eol || 'crlf';
+  input('command-body').value = command?.body || '';
+  element<HTMLButtonElement>('command-library-delete').hidden = !command;
+  element('command-library-error').textContent = '';
+  element('command-library-form-title').textContent = command ? '명령 편집' : '새 명령';
+}
+function openCommandLibrary(command: SavedCommand | null = null): void {
+  fillCommandForm(command);
+  renderCommandLibraryList();
+  element<HTMLDialogElement>('command-library-dialog').showModal();
+  input('command-name').focus();
+}
+async function submitCommand(): Promise<void> {
+  const body = input('command-body').value;
+  const mode = value('command-mode') as 'text' | 'hex';
+  try { encodeSend(body, mode, value('command-eol')); }
+  catch (error) { element('command-library-error').textContent = (error as Error).message; return; }
+  try {
+    commands = await api.saveCommand({ id: value('command-id'), name: value('command-name').trim(), body, mode, eol: value('command-eol') as 'none' | 'cr' | 'lf' | 'crlf' });
+    renderCommandPaletteList(); renderCommandLibraryList();
+    element<HTMLDialogElement>('command-library-dialog').close();
+  } catch (error) { element('command-library-error').textContent = (error as Error).message; }
+}
+async function deleteCurrentCommand(): Promise<void> {
+  const id = value('command-id'); if (!id) return;
+  if (!confirm('이 저장된 명령을 삭제할까요?')) return;
+  commands = await api.deleteCommand(id);
+  renderCommandPaletteList(); renderCommandLibraryList();
+  element<HTMLDialogElement>('command-library-dialog').close();
 }
 function renderHomePreview(): void {
   homeBackground(element('home-preview'), homeDraft.background);
@@ -354,13 +440,39 @@ element('files-up').addEventListener('click', () => { void run(() => loadFiles(`
 element('files-upload').addEventListener('click', () => { if (filesId) void run(() => api.upload(filesId!, value('remote-path'))); });
 api.onMenu(action => {
   const current = activeId ? views.get(activeId) : undefined;
-  const controls = { serial: 'new-serial', ssh: 'new-ssh', local: 'new-local', home: 'home-tab', sessions: 'show-sessions', split: 'split', files: 'toolbar-files', log: 'toolbar-log', refresh: 'refresh-ports' };
+  const controls = { serial: 'new-serial', ssh: 'new-ssh', local: 'new-local', home: 'home-tab', sessions: 'show-sessions', split: 'split', files: 'toolbar-files', log: 'toolbar-log', refresh: 'refresh-ports', palette: 'command-palette-open' };
   if (action in controls) element(controls[action as keyof typeof controls]).click();
   else if (action === 'disconnect' && current) void run(() => api.disconnect(current.id));
   else if (action === 'clear' && current) current.term.clear();
   else if (action === 'search' && current) current.pane.querySelector<HTMLInputElement>('.search-box')?.focus();
   else if (action === 'theme-light' || action === 'theme-dark') void run(() => changeTheme(action === 'theme-dark' ? 'dark' : 'light'));
 });
+window.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') { event.preventDefault(); openCommandPalette(); return; }
+  const dialog = element<HTMLDialogElement>('command-palette-dialog');
+  if (!dialog.open) return;
+  if (event.key === 'Escape') return;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    const rows = dialog.querySelectorAll<HTMLButtonElement>('.command-palette-row');
+    if (!rows.length) return;
+    event.preventDefault();
+    commandPaletteSelection = (commandPaletteSelection + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+    renderCommandPaletteList();
+  } else if (event.key === 'Enter') {
+    const filter = value('command-palette-filter').toLowerCase();
+    const filtered = commands.filter(command => `${command.name} ${command.body}`.toLowerCase().includes(filter));
+    if (!filtered[commandPaletteSelection]) return;
+    event.preventDefault();
+    void run(() => executeCommand(filtered[commandPaletteSelection].id));
+  }
+});
+for (const id of ['command-palette-close', 'command-palette-cancel']) element(id).addEventListener('click', () => element<HTMLDialogElement>('command-palette-dialog').close());
+element('command-palette-manage').addEventListener('click', () => { element<HTMLDialogElement>('command-palette-dialog').close(); openCommandLibrary(); });
+input('command-palette-filter').addEventListener('input', () => { commandPaletteSelection = 0; renderCommandPaletteList(); });
+for (const id of ['command-library-close', 'command-library-cancel']) element(id).addEventListener('click', () => element<HTMLDialogElement>('command-library-dialog').close());
+element('command-library-form').addEventListener('submit', event => { event.preventDefault(); void submitCommand(); });
+element('command-library-delete').addEventListener('click', () => { void deleteCurrentCommand(); });
+element('command-library-new').addEventListener('click', () => openCommandLibrary());
 // 작은 도구 아이콘은 자체 SVG로 만들고 MobaXterm 자산을 포함하지 않는다.
 const icons: Record<string, { color: string; body: string }> = {
   serial: { color: '#cf964c', body: '<rect x="6" y="7" width="20" height="15" rx="3"/><path d="M10 7V3m6 4V3m6 4V3M10 22v5m6-5v5m6-5v5"/><path d="M10 12h12M10 17h12" stroke="#fff"/>' },
@@ -375,4 +487,4 @@ const icons: Record<string, { color: string; body: string }> = {
 for (const tool of document.querySelectorAll<HTMLElement>('[data-icon]')) {
   const icon = icons[tool.dataset.icon!]; const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('fill', icon.color); svg.setAttribute('stroke', icon.color); svg.setAttribute('stroke-width', '1.6'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = icon.body; tool.prepend(svg);
 }
-void run(async () => { const [currentTheme, appearance] = await Promise.all([api.theme(), api.homeAppearance()]); applyTheme(currentTheme); applyHomeAppearance(appearance); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); });
+void run(async () => { const [currentTheme, appearance] = await Promise.all([api.theme(), api.homeAppearance()]); applyTheme(currentTheme); applyHomeAppearance(appearance); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); void loadCommands(); });

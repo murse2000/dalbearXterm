@@ -1,12 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { homeAppearanceSchema, profileSchema, themeSchema, type HomeAppearance, type Profile, type Theme } from './model';
+import { commandSchema, homeAppearanceSchema, profileSchema, themeSchema, type HomeAppearance, type Profile, type SavedCommand, type Theme } from './model';
 
-const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light'), home: homeAppearanceSchema.default({ background: null, logoDataUrl: null }) });
+const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light'), home: homeAppearanceSchema.default({ background: null, logoDataUrl: null }), commands: z.array(commandSchema).max(500).default([]) });
 type Settings = z.infer<typeof fileSchema>;
 export class Store {
-  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light', home: { background: null, logoDataUrl: null } };
+  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light', home: { background: null, logoDataUrl: null }, commands: [] };
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private readonly directory: string) {}
   async load(): Promise<void> {
@@ -52,5 +52,15 @@ export class Store {
   hostKey(host: string, port: number): string | undefined { return this.settings.knownHosts[JSON.stringify([host.toLowerCase(), port])]; }
   async trust(host: string, port: number, fingerprint: string): Promise<void> {
     await this.update(next => { next.knownHosts[JSON.stringify([host.toLowerCase(), port])] = fingerprint; });
+  }
+  commands(): SavedCommand[] { return structuredClone(this.settings.commands); }
+  async saveCommand(command: unknown): Promise<SavedCommand[]> {
+    const clean = commandSchema.parse(command);
+    await this.update(next => { next.commands = [...next.commands.filter(item => item.id !== clean.id), clean]; });
+    return this.commands();
+  }
+  async removeCommand(id: string): Promise<SavedCommand[]> {
+    await this.update(next => { next.commands = next.commands.filter(item => item.id !== id); });
+    return this.commands();
   }
 }
