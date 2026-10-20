@@ -416,6 +416,7 @@ for (const id of ['new-serial', 'empty-serial']) element(id).addEventListener('c
 for (const id of ['new-ssh', 'empty-ssh']) element(id).addEventListener('click', () => showDialog('ssh'));
 element('new-local').addEventListener('click', () => { void run(local); });
 element('empty-local').addEventListener('click', () => { void run(local); });
+element('empty-palette').addEventListener('click', () => openCommandPalette());
 element('tab-add').addEventListener('click', () => showDialog('serial'));
 element('show-sessions').addEventListener('click', toggleSessions);
 element('rail-sessions').addEventListener('click', toggleSessions);

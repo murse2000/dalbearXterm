@@ -19,6 +19,13 @@ const { createFixture } = require('./fixture.cjs');
     const page = await application.firstWindow();
     page.on('pageerror', error => errors.push(error.message));
     await page.waitForSelector('#empty:not([hidden])');
+    // 시작 화면의 '명령 팔레트' 버튼이 보이고 클릭으로 연다.
+    assert.equal(await page.locator('#empty-palette').count(), 1);
+    await page.locator('#empty-palette').click();
+    await page.waitForSelector('#command-palette-dialog[open]');
+    assert.equal(await page.locator('#command-palette-filter').evaluate(input => input === document.activeElement), true, '필터 입력에 포커스');
+    await page.locator('#command-palette-cancel').click();
+    await page.waitForFunction(() => !document.getElementById('command-palette-dialog').open);
     await application.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
     await page.evaluate(() => { window.__received = ''; window.terminal.onEvent(event => { if (event.type === 'data') window.__received += new TextDecoder().decode(event.bytes); }); });
     await page.locator('#new-ssh').click();
@@ -102,7 +109,7 @@ const { createFixture } = require('./fixture.cjs');
     assert.ok((await page.locator('#toast').textContent()).includes('먼저 세션을 연결하세요'));
     assert.deepEqual(errors, []);
     await page.screenshot({ path: path.join(root, 'command-palette.png') });
-    console.log(JSON.stringify({ passed: true, checks: ['Ctrl+Shift+P 열기', '검색 필터', '화살표 + Enter 실행', '라이브러리 저장', '라이브러리 편집', '라이브러리 삭제', '비활성 세션 거부'], screenshots: root }, null, 2));
+    console.log(JSON.stringify({ passed: true, checks: ['Ctrl+Shift+P 열기', '시작 화면 버튼 열기', '검색 필터', '화살표 + Enter 실행', '라이브러리 저장', '라이브러리 편집', '라이브러리 삭제', '비활성 세션 거부'], screenshots: root }, null, 2));
   } catch (error) {
     const pages = application.windows(); if (pages[0]) { await pages[0].screenshot({ path: path.join(root, 'failure.png') }); console.error(await pages[0].locator('body').innerText()); }
     throw error;

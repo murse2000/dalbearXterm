@@ -197,6 +197,9 @@ body.split .search-box { flex-basis: 65px; }
 #command-library-dialog { width: min(820px, 92vw); max-height: 80vh; padding: 0; }
 #command-library-dialog::backdrop { background: var(--backdrop, rgba(0, 0, 0, 0.45)); }
 #command-library-dialog > .dialog-heading { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+#command-palette-dialog { width: min(560px, 92vw); padding: 18px 20px 20px; }
+#command-palette-dialog > .dialog-heading { padding: 0 0 12px; border-bottom: 1px solid var(--border); margin: 0 0 14px; background: transparent; }
+#command-palette-dialog .form-note { margin: 10px 0 14px; }
 .command-library-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(220px, 320px); gap: 18px; padding: 16px 18px 18px; align-items: start; max-height: calc(80vh - 56px); overflow: auto; }
 .command-library-form { display: flex; flex-direction: column; gap: 0; }
 .command-library-form .dialog-heading { padding: 0 0 8px; border: 0; }
