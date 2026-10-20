@@ -98,6 +98,30 @@
     </form>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="command-palette-dialog" aria-labelledby="command-palette-title">
+    <div class="dialog-heading"><div><span class="eyebrow">빠른 실행</span><h2 id="command-palette-title">명령 팔레트</h2></div><button id="command-palette-close" type="button" class="icon-button" aria-label="명령 팔레트 닫기">×</button></div>
+    <input id="command-palette-filter" type="search" placeholder="저장된 명령 검색" aria-label="명령 검색">
+    <div id="command-palette-list" class="command-palette-list" role="listbox" aria-label="저장된 명령"></div>
+    <p class="form-note">Enter로 현재 활성 세션에 전송합니다. 명령 추가·편집·삭제는 ‘명령 라이브러리 관리’를 여세요.</p>
+    <div class="dialog-footer"><button id="command-palette-manage" type="button">명령 라이브러리 관리</button><button id="command-palette-cancel" type="button">닫기</button></div>
+  </dialog>
+  <dialog id="command-library-dialog" aria-labelledby="command-library-title">
+    <div class="dialog-heading"><div><span class="eyebrow">명령 라이브러리</span><h2 id="command-library-title">저장된 명령 관리</h2></div><button id="command-library-close" type="button" class="icon-button" aria-label="명령 라이브러리 닫기">×</button></div>
+    <form id="command-library-form" class="command-library-form">
+      <input id="command-id" type="hidden">
+      <label for="command-name">이름</label>
+      <input id="command-name" type="text" maxlength="100" required>
+      <div class="grid">
+        <div><label for="command-mode">모드</label><select id="command-mode"><option value="text">TEXT</option><option value="hex">HEX</option></select></div>
+        <div><label for="command-eol">줄 끝</label><select id="command-eol"><option value="none">없음</option><option value="cr">CR</option><option value="lf">LF</option><option value="crlf">CR+LF</option></select></div>
+      </div>
+      <label for="command-body">내용</label><textarea id="command-body" rows="3" maxlength="4096" required></textarea>
+      <div id="command-library-error" class="form-error" role="alert"></div>
+      <div class="dialog-footer"><button id="command-library-delete" type="button">삭제</button><span class="spacer"></span><button id="command-library-cancel" type="button">취소</button><button id="command-library-save" class="primary" type="submit">저장</button></div>
+    </form>
+    <div class="dialog-heading"><div><h3>저장된 명령</h3></div><button id="command-library-new" type="button" class="icon-button" aria-label="새 명령">+</button></div>
+    <ul id="command-library-list" class="command-library-list" aria-label="저장된 명령 목록"></ul>
+  </dialog>
   <script src="renderer.js"></script>
 </body>
 </html>

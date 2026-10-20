@@ -9,7 +9,7 @@ import { Connections } from '../src/connections';
 import { Store } from '../src/store';
 import { Transfers } from '../src/transfers';
 import { SessionLog } from '../src/logger';
-import { encodeSend, parseHex, type SerialProfile, type SSHProfile, type AppEvent } from '../src/model';
+import { encodeSend, parseHex, type SerialProfile, type SSHProfile, type AppEvent, type SavedCommand } from '../src/model';
 const { createFixture } = require('./fixture.cjs');
 async function folder(t: test.TestContext): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), 'dalbear-test-'));
@@ -92,4 +92,34 @@ test('SSH 호스트 키 확인·거부·변경과 실제 SFTP 왕복을 검증�
   const next = randomUUID(); await manager.connect(next, profile, { password: 'test-fixture-password' }, 80, 24); assert.equal(questions.length, 1); await manager.disconnect(next);
   await store.trust(profile.host, profile.port, 'SHA256:changed'); allow = false;
   await assert.rejects(manager.connect(randomUUID(), profile, { password: 'test-fixture-password' }, 80, 24)); assert.equal(questions.length, 2);
+});
+test('명령 라이브러리는 저장·교체·삭제와 자격 증명 격리를 보장한다', async t => {
+  const dir = await folder(t); const store = new Store(dir); await store.load();
+  const base: SavedCommand = { id: randomUUID(), name: '재부팅', body: 'reboot', mode: 'text', eol: 'crlf' };
+  await store.saveCommand(base); assert.deepEqual(store.commands(), [base]);
+  const replaced: SavedCommand = { ...base, body: 'reboot -f' };
+  await store.saveCommand(replaced); assert.deepEqual(store.commands(), [replaced]);
+  const another: SavedCommand = { id: randomUUID(), name: '부트 중단', body: 'AA 1B', mode: 'hex', eol: 'none' };
+  await store.saveCommand(another); assert.equal(store.commands().length, 2);
+  await store.removeCommand(another.id); assert.deepEqual(store.commands(), [replaced]);
+  await assert.rejects(store.saveCommand({ ...base, mode: 'binary' }));
+  const saved = await readFile(path.join(dir, 'settings.json'), 'utf8');
+  assert.ok(!saved.includes('password') && !saved.includes('passphrase'));
+  const restored = new Store(dir); await restored.load(); assert.equal(restored.commands().length, 1);
+});
+test('runCommand는 연결된 시리얼 세션에 저장된 명령을 그대로 전송한다', async t => {
+  const dir = await folder(t); const store = new Store(dir); await store.load();
+  const portPath = `COM_TEST_${randomUUID()}`;
+  SerialPortMock.binding.createPort(portPath, { echo: false, record: true });
+  let mock: SerialPortMock;
+  const manager = new Connections(store, async () => false, config => {
+    mock = new SerialPortMock({ path: config.path, baudRate: config.baudRate, autoOpen: false }); return mock as unknown as SerialPort;
+  });
+  t.after(() => manager.closeAll());
+  const profile: SerialProfile = { id: randomUUID(), name: '시리얼 명령', kind: 'serial', path: portPath, baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none', eol: 'cr', localEcho: false };
+  const id = randomUUID(); await manager.connect(id, profile, {}, 80, 24);
+  const command: SavedCommand = { id: randomUUID(), name: '동기화', body: 'AT+Z', mode: 'text', eol: 'crlf' };
+  await manager.runCommand(id, command);
+  assert.deepEqual(mock!.port!.recording, Buffer.from('AT+Z\r\n'));
+  await assert.rejects(manager.runCommand(randomUUID(), command));
 });

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Store } from './store';
 import { Connections } from './connections';
 import { Transfers } from './transfers';
-import { credentialsSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
+import { commandSchema, credentialsSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
 
 if (process.env.DALBEAR_TEST_DATA) app.setPath('userData', process.env.DALBEAR_TEST_DATA);
 app.setAppUserModelId('com.hrobotics.dalbearxterm');
@@ -29,7 +29,7 @@ app.whenReady().then(async () => {
   window = new BrowserWindow({ width: 1480, height: 920, minWidth: 1024, minHeight: 680, backgroundColor: store.theme() === 'dark' ? '#1c222b' : '#f3f3f3', title: 'dalbearXterm', webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
   const command = (label: string, action: MenuAction, accelerator?: string) => ({ label, accelerator, click: () => window.webContents.send('menu-action', action) });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: '터미널', submenu: [command('로컬 터미널 시작', 'local', 'Ctrl+Shift+T'), command('출력 지우기', 'clear'), command('출력 검색', 'search', 'Ctrl+Shift+F'), { type: 'separator' }, { role: 'quit', label: '종료' }] },
+    { label: '터미널', submenu: [command('로컬 터미널 시작', 'local', 'Ctrl+Shift+T'), command('명령 팔레트', 'palette', 'Ctrl+Shift+P'), command('출력 지우기', 'clear'), command('출력 검색', 'search', 'Ctrl+Shift+F'), { type: 'separator' }, { role: 'quit', label: '종료' }] },
     { label: '세션', submenu: [command('새 시리얼 연결', 'serial', 'Ctrl+Shift+N'), command('새 SSH 연결', 'ssh'), command('저장된 세션', 'sessions'), { type: 'separator' }, command('현재 연결 종료', 'disconnect')] },
     { label: '보기', submenu: [command('시작 화면', 'home'), command('화면 분할', 'split'), command('SFTP 파일', 'files'), { label: '테마', submenu: (['light', 'dark'] as Theme[]).map(theme => ({ ...command(theme === 'dark' ? '다크' : '일반', `theme-${theme}`), id: `theme-${theme}`, type: 'radio' as const, checked: store.theme() === theme })) }, { type: 'separator' }, { role: 'togglefullscreen', label: '전체 화면' }] },
     { label: '도구', submenu: [command('포트 새로고침', 'refresh'), command('로그 저장 시작 / 종료', 'log')] },
@@ -112,6 +112,15 @@ app.whenReady().then(async () => {
   handle('choose-key', z.undefined(), async () => {
     const choice = await dialog.showOpenDialog(window, { title: 'SSH 개인키 선택', defaultPath: path.join(app.getPath('home'), '.ssh'), properties: ['openFile'] });
     return choice.canceled ? null : choice.filePaths[0];
+  });
+  handle('commands', z.undefined(), () => store.commands());
+  handle('command-save', commandSchema, body => store.saveCommand(body));
+  handle('command-delete', idBody, body => store.removeCommand(body.id));
+  handle('command-run', idBody.extend({ commandId: idSchema }), async body => {
+    const list = store.commands();
+    const command = list.find(item => item.id === body.commandId);
+    if (!command) throw new Error('저장된 명령이 없습니다. 명령 팔레트에서 다시 선택하세요.');
+    await connections.runCommand(body.id, command);
   });
   window.on('close', event => { if (!quitting) { event.preventDefault(); void appQuit(); } });
   await window.loadFile(entryFile);

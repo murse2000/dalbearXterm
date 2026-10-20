@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { Api, AppEvent, MenuAction, Theme } from './model';
+import type { Api, AppEvent, MenuAction, SavedCommand, Theme } from './model';
 async function invoke<T>(action: string, body?: unknown): Promise<T> {
   const result = await ipcRenderer.invoke(action, body);
   if (!result.ok) throw new Error(result.error);
@@ -29,6 +29,10 @@ const api: Api = {
   download: (id, path) => invoke('download', { id, path }),
   cancelTransfer: transferId => invoke('transfer-cancel', { transferId }),
   chooseKey: () => invoke('choose-key'),
+  commands: () => invoke<SavedCommand[]>('commands'),
+  saveCommand: command => invoke<SavedCommand[]>('command-save', command),
+  deleteCommand: id => invoke<SavedCommand[]>('command-delete', { id }),
+  runCommand: (commandId, targetId) => invoke('command-run', { id: targetId, commandId }),
   onMenu: listener => {
     const handler = (_event: Electron.IpcRendererEvent, action: MenuAction) => listener(action);
     ipcRenderer.on('menu-action', handler);

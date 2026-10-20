@@ -1,4 +1,4 @@
-import type { Api, AppEvent, MenuAction, Theme } from './model';
+import type { Api, AppEvent, MenuAction, SavedCommand, Theme } from './model';
 
 const bridge = (window as unknown as { chrome: { webview: { postMessage(message: unknown): void; addEventListener(name: string, listener: (event: MessageEvent) => void): void } } }).chrome.webview;
 let sequence = 0;
@@ -31,6 +31,7 @@ const api: Api = {
   logStart: id => invoke('log-start', { id }), logStop: id => invoke('log-stop', { id }),
   listFiles: (id, path) => invoke('files', { id, path }), upload: (id, path) => invoke('upload', { id, path }), download: (id, path) => invoke('download', { id, path }),
   cancelTransfer: transferId => invoke('transfer-cancel', { transferId }), chooseKey: () => invoke('choose-key'),
+  commands: () => invoke<SavedCommand[]>('commands'), saveCommand: command => invoke<SavedCommand[]>('command-save', command), deleteCommand: id => invoke<SavedCommand[]>('command-delete', { id }), runCommand: (commandId, targetId) => invoke('command-run', { id: targetId, commandId }),
   onEvent: listener => { events.add(listener); return () => { events.delete(listener); }; }, onMenu: listener => { menus.add(listener); return () => { menus.delete(listener); }; }
 };
 Object.defineProperty(window, 'terminal', { value: Object.freeze(api), writable: false });

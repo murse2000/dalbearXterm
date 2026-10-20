@@ -5,7 +5,8 @@ import { StringDecoder } from 'node:string_decoder';
 import { SerialPort } from 'serialport';
 import { Client, type ClientChannel, type SFTPWrapper } from 'ssh2';
 import type { IPty } from 'node-pty';
-import type { AppEvent, Credentials, Profile, SerialProfile, SSHProfile } from './model';
+import type { AppEvent, Credentials, Profile, SavedCommand, SerialProfile, SSHProfile } from './model';
+import { encodeSend } from './model';
 import { Store } from './store';
 import { SessionLog } from './logger';
 
@@ -169,6 +170,10 @@ export class Connections extends EventEmitter {
     await this.stopLogEntry(entry);
     if (entry.serial?.isOpen) await new Promise<void>((resolve, reject) => entry.serial!.close(error => error ? reject(error) : resolve()));
     entry.finish?.();
+  }
+  async runCommand(id: string, command: SavedCommand): Promise<void> {
+    // 저장된 명령을 그대로 직렬화해 보낸다. SEND/HTTP와 동일하게 연결된 세션에만 적용된다.
+    await this.write(id, encodeSend(command.body, command.mode, command.eol));
   }
   async closeAll(): Promise<void> { await Promise.all([...this.entries.keys()].map(id => this.disconnect(id))); }
   async sftp(id: string): Promise<SFTPWrapper> {

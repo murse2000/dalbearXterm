@@ -11,6 +11,10 @@ export type SerialProfile = Extract<Profile, { kind: 'serial' }>;
 export type SSHProfile = Extract<Profile, { kind: 'ssh' }>;
 export const credentialsSchema = z.object({ password: z.string().max(4096).optional(), passphrase: z.string().max(4096).optional() });
 export type Credentials = z.infer<typeof credentialsSchema>;
+export const sendModeSchema = z.enum(['text', 'hex']);
+export const eolSchema = z.enum(['none', 'cr', 'lf', 'crlf']);
+export const commandSchema = z.object({ id: z.uuid(), name: z.string().trim().min(1).max(100), body: z.string().min(1).max(4096), mode: sendModeSchema, eol: eolSchema });
+export type SavedCommand = z.infer<typeof commandSchema>;
 export const idSchema = z.uuid();
 export const sizeSchema = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(1).max(500) });
 export const themeSchema = z.enum(['light', 'dark']);
@@ -28,7 +32,7 @@ export type AppEvent =
   | { type: 'transfer'; id: string; transferId: string; bytes: number; total: number; state: 'running' | 'completed' | 'cancelled' | 'error'; message: string };
 export interface RemoteEntry { name: string; directory: boolean; size: number; modified: number; }
 export interface PortInfo { path: string; manufacturer?: string; serialNumber?: string; }
-export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'theme-light' | 'theme-dark';
+export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'palette' | 'theme-light' | 'theme-dark';
 export interface Api {
   homeAppearance(): Promise<HomeAppearance>;
   setHomeAppearance(appearance: HomeAppearance): Promise<HomeAppearance>;
@@ -52,6 +56,10 @@ export interface Api {
   download(id: string, path: string): Promise<string | null>;
   cancelTransfer(transferId: string): Promise<void>;
   chooseKey(): Promise<string | null>;
+  commands(): Promise<SavedCommand[]>;
+  saveCommand(command: SavedCommand): Promise<SavedCommand[]>;
+  deleteCommand(id: string): Promise<SavedCommand[]>;
+  runCommand(commandId: string, targetId: string): Promise<void>;
   onEvent(listener: (event: AppEvent) => void): () => void;
   onMenu(listener: (action: MenuAction) => void): () => void;
 }
