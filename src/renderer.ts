@@ -110,6 +110,7 @@ function fillCommandForm(command: SavedCommand | null): void {
   input('command-body').value = command?.body || '';
   element<HTMLButtonElement>('command-library-delete').hidden = !command;
   element('command-library-error').textContent = '';
+  element('command-library-form-title').textContent = command ? '명령 편집' : '새 명령';
 }
 function openCommandLibrary(command: SavedCommand | null = null): void {
   fillCommandForm(command);
