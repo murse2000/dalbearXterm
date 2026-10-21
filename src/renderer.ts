@@ -24,8 +24,12 @@ interface View {
   id: string; profile: Profile; state: ConnectionState; term: Terminal; fit: FitAddon; search: SearchAddon;
   pane: HTMLElement; message: HTMLElement; hex: HTMLElement; hexMode: boolean; hexHistory: HexHistory; hexFrame?: number;
   log: boolean; logButton: HTMLButtonElement; connectButton: HTMLButtonElement; observer: ResizeObserver;
+  label: string; history: string[]; historyIndex: number; historyDraft: string;
+  searchInput: HTMLInputElement; searchCount: HTMLElement; searchOptions: { caseSensitive: boolean; regex: boolean };
 }
 const views = new Map<string, View>();
+let draggingId: string | undefined;
+let renamingId: string | undefined;
 let theme: Theme = 'light';
 let homeAppearance: HomeAppearance = { background: null, logoDataUrl: null };
 let homeDraft = { ...homeAppearance };
@@ -35,7 +39,7 @@ let commands: SavedCommand[] = [];
 let commandPaletteSelection = 0;
 function applyTheme(next: Theme): void {
   theme = next; document.documentElement.dataset.theme = next; set('theme-select', next);
-  for (const view of views.values()) view.term.options.theme = { ...terminalThemes[next] };
+  for (const view of views.values()) { view.term.options.theme = { ...terminalThemes[next] }; refreshSearchColors(view); }
   if (element<HTMLDialogElement>('home-appearance-dialog').open) renderHomePreview();
 }
 async function changeTheme(next: Theme): Promise<void> {
@@ -88,7 +92,9 @@ function openCommandPalette(): void {
 async function executeCommand(commandId: string): Promise<void> {
   const target = activeId ? views.get(activeId) : undefined;
   if (!target || target.state !== 'connected') { toast('먼저 세션을 연결하세요.'); return; }
+  const saved = commands.find(item => item.id === commandId);
   await api.runCommand(commandId, target.id);
+  if (saved) recordHistory(target, saved.body);
   element<HTMLDialogElement>('command-palette-dialog').close();
 }
 function renderCommandLibraryList(): void {
@@ -237,6 +243,173 @@ function fit(view: View): void {
   view.fit.fit();
   if (view.state === 'connected') void run(() => api.resize(view.id, view.term.cols, view.term.rows));
 }
+// 터미널 검색: 테마에 맞는 강조색을 쓰고, 결과 개수를 함께 보여 준다.
+function searchDecorations(): { matchBackground: string; matchBorder: string; matchOverviewRuler: string; activeMatchBackground: string; activeMatchBorder: string; activeMatchColorOverviewRuler: string } {
+  return theme === 'dark'
+    ? { matchBackground: '#5a4a1a', matchBorder: '#8a6a10', matchOverviewRuler: '#c9a227', activeMatchBackground: '#8a5a00', activeMatchBorder: '#d99a00', activeMatchColorOverviewRuler: '#ffb300' }
+    : { matchBackground: '#ffe082', matchBorder: '#f0c040', matchOverviewRuler: '#e0a800', activeMatchBackground: '#ffb300', activeMatchBorder: '#d18b00', activeMatchColorOverviewRuler: '#ef6c00' };
+}
+function clearSearch(view: View): void {
+  view.search.clearDecorations();
+  view.searchCount.textContent = '';
+}
+function findNext(view: View, incremental = false): void {
+  const term = view.searchInput.value;
+  if (!term) { clearSearch(view); return; }
+  view.search.findNext(term, { ...view.searchOptions, incremental, decorations: searchDecorations() });
+}
+function findPrevious(view: View): void {
+  const term = view.searchInput.value;
+  if (!term) { clearSearch(view); return; }
+  view.search.findPrevious(term, { ...view.searchOptions, decorations: searchDecorations() });
+}
+function toggleSearchOption(view: View, name: 'caseSensitive' | 'regex', control: HTMLButtonElement): void {
+  view.searchOptions[name] = !view.searchOptions[name];
+  control.setAttribute('aria-pressed', String(view.searchOptions[name]));
+  findNext(view);
+}
+function refreshSearchColors(view: View): void {
+  if (view.searchInput.value) findNext(view);
+}
+function buildSearchBar(view: View, search: SearchAddon): HTMLElement {
+  const bar = document.createElement('div'); bar.className = 'search-bar';
+  const searchBox = document.createElement('input');
+  searchBox.className = 'search-box'; searchBox.placeholder = '출력 검색'; searchBox.ariaLabel = '터미널 출력 검색'; searchBox.autocomplete = 'off';
+  const caseButton = button('Aa', () => toggleSearchOption(view, 'caseSensitive', caseButton), '대소문자 구분');
+  caseButton.setAttribute('aria-pressed', 'false'); caseButton.classList.add('search-toggle');
+  const regexButton = button('.*', () => toggleSearchOption(view, 'regex', regexButton), '정규식 사용');
+  regexButton.setAttribute('aria-pressed', 'false'); regexButton.classList.add('search-toggle');
+  const previousButton = button('↑', () => findPrevious(view), '이전 결과 (Shift+Enter)');
+  const nextButton = button('↓', () => findNext(view), '다음 결과 (Enter)');
+  const count = document.createElement('span'); count.className = 'search-count'; count.ariaLive = 'polite';
+  view.searchInput = searchBox; view.searchCount = count;
+  search.onDidChangeResults(({ resultIndex, resultCount }) => {
+    count.textContent = resultCount > 0 ? `${resultIndex + 1}/${resultCount}` : (searchBox.value ? '없음' : '');
+    count.classList.toggle('no-result', resultCount === 0 && !!searchBox.value);
+  });
+  searchBox.addEventListener('input', () => findNext(view, true));
+  searchBox.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); if (event.shiftKey) findPrevious(view); else findNext(view); }
+    else if (event.key === 'Escape') { event.preventDefault(); clearSearch(view); view.term.focus(); }
+  });
+  bar.append(searchBox, caseButton, regexButton, previousButton, nextButton, count);
+  return bar;
+}
+// 송신 기록: 세션 안에서만 유지하고, 재연결 후 자동 재전송하지 않는다.
+function recordHistory(view: View, value: string): void {
+  if (!value) return;
+  view.historyIndex = -1; view.historyDraft = '';
+  if (view.history.at(-1) === value) return;
+  view.history.push(value);
+  if (view.history.length > 100) view.history.shift();
+}
+function browseHistory(view: View, command: HTMLInputElement, direction: -1 | 1): boolean {
+  if (!view.history.length) return false;
+  if (direction === -1) {
+    if (view.historyIndex === -1) { view.historyDraft = command.value; view.historyIndex = view.history.length - 1; }
+    else if (view.historyIndex > 0) view.historyIndex--;
+    command.value = view.history[view.historyIndex];
+    return true;
+  }
+  if (view.historyIndex === -1) return false;
+  if (view.historyIndex < view.history.length - 1) { view.historyIndex++; command.value = view.history[view.historyIndex]; }
+  else { view.historyIndex = -1; command.value = view.historyDraft; }
+  return true;
+}
+function reorderViews(order: string[]): void {
+  const entries = order.map(key => [key, views.get(key)!] as const);
+  views.clear();
+  for (const [key, view] of entries) views.set(key, view);
+  renderWorkspace();
+}
+function moveView(dragId: string, targetId: string, after: boolean): void {
+  if (dragId === targetId) return;
+  const order = [...views.keys()].filter(key => key !== dragId);
+  const index = order.indexOf(targetId);
+  if (index < 0) return;
+  order.splice(after ? index + 1 : index, 0, dragId);
+  reorderViews(order);
+}
+function moveViewBy(id: string, delta: number): void {
+  const order = [...views.keys()];
+  const from = order.indexOf(id); const to = from + delta;
+  if (from < 0 || to < 0 || to >= order.length) return;
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  reorderViews(order);
+}
+function clearDropHints(): void {
+  for (const tab of element('tabs').querySelectorAll('.tab')) tab.classList.remove('drop-before', 'drop-after');
+}
+function startTabRename(view: View): void {
+  if (renamingId) return;
+  const tab = element('tabs').querySelector<HTMLElement>(`.tab[data-session-id="${view.id}"]`);
+  const name = tab?.querySelector<HTMLElement>('.tab-name');
+  if (!tab || !name) return;
+  renamingId = view.id; tab.draggable = false;
+  const input = document.createElement('input');
+  input.className = 'tab-rename'; input.value = view.label; input.maxLength = 40; input.ariaLabel = '세션 이름';
+  name.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const finish = (commit: boolean): void => {
+    if (done) return;
+    done = true; renamingId = undefined;
+    if (commit) view.label = input.value.trim() || view.profile.name;
+    renderWorkspace();
+    if (commit) view.term.focus();
+  };
+  input.addEventListener('keydown', event => {
+    event.stopPropagation();
+    if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+    else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', event => event.stopPropagation());
+  input.addEventListener('dblclick', event => event.stopPropagation());
+}
+function renderTab(view: View, home: boolean): HTMLElement {
+  const tab = document.createElement('div');
+  const active = view.id === activeId && !home;
+  tab.className = `tab${active ? ' active' : ''}`;
+  tab.dataset.sessionId = view.id; tab.tabIndex = 0; tab.draggable = true;
+  tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(active));
+  tab.title = `${view.label} · ${description(view.profile)}\n드래그로 순서 변경 · 더블클릭 또는 F2로 이름 변경`;
+  const dot = document.createElement('span'); dot.className = `state-dot ${view.state}`;
+  const name = document.createElement('span'); name.className = 'tab-name'; name.textContent = view.label;
+  const close = document.createElement('span'); close.textContent = '×'; close.className = 'close'; close.title = '세션 닫기'; close.setAttribute('role', 'button'); close.ariaLabel = '세션 닫기';
+  const activate = (): void => { activeId = view.id; homeSelected = false; renderWorkspace(); view.term.focus(); };
+  tab.addEventListener('click', activate);
+  tab.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
+    else if (event.key === 'F2') { event.preventDefault(); startTabRename(view); }
+    else if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); moveViewBy(view.id, event.key === 'ArrowLeft' ? -1 : 1); }
+  });
+  name.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); startTabRename(view); });
+  close.addEventListener('click', event => { event.stopPropagation(); void run(() => closeView(view.id)); });
+  tab.addEventListener('dragstart', event => {
+    draggingId = view.id; clearDropHints();
+    if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', view.id); }
+    tab.classList.add('dragging');
+  });
+  tab.addEventListener('dragend', () => { draggingId = undefined; tab.classList.remove('dragging'); clearDropHints(); });
+  tab.addEventListener('dragover', event => {
+    if (!draggingId || draggingId === view.id) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = tab.getBoundingClientRect(); const after = event.clientX > rect.left + rect.width / 2;
+    clearDropHints(); tab.classList.add(after ? 'drop-after' : 'drop-before');
+  });
+  tab.addEventListener('dragleave', () => tab.classList.remove('drop-before', 'drop-after'));
+  tab.addEventListener('drop', event => {
+    event.preventDefault();
+    const dragged = draggingId;
+    const rect = tab.getBoundingClientRect(); const after = event.clientX > rect.left + rect.width / 2;
+    draggingId = undefined; clearDropHints();
+    if (dragged) moveView(dragged, view.id, after);
+  });
+  tab.append(dot, name, close);
+  return tab;
+}
 async function send(view: View, bytes: Uint8Array): Promise<void> {
   if (view.state !== 'connected') { toast('먼저 세션을 연결하세요.'); return; }
   // 큰 붙여넣기도 IPC 메시지 한도를 넘지 않도록 순서대로 보낸다.
@@ -245,19 +418,20 @@ async function send(view: View, bytes: Uint8Array): Promise<void> {
 async function connect(profile: Profile, credentials: Credentials): Promise<void> {
   if (views.size === 0) sidebarExpanded(false);
   const id = crypto.randomUUID();
-  const term = new Terminal({ cursorBlink: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { ...terminalThemes[theme] } });
+  const term = new Terminal({ cursorBlink: true, allowProposedApi: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { ...terminalThemes[theme] } });
   const fitAddon = new FitAddon(); const search = new SearchAddon(); term.loadAddon(fitAddon); term.loadAddon(search);
   const pane = document.createElement('article'); pane.className = 'session-pane'; pane.dataset.sessionId = id;
   const toolbar = document.createElement('div'); toolbar.className = 'session-toolbar';
   const detail = document.createElement('span'); detail.className = 'details'; detail.textContent = description(profile); detail.title = detail.textContent;
   const logButton = button('○ 로그', async () => view.log ? api.logStop(id) : api.logStart(id), '원본 바이트 및 타임스탬프 로그 저장');
   const reconnectButton = button('연결 종료', async () => { if (view.state === 'connected' || view.state === 'connecting') await api.disconnect(id); else { if (profile.kind === 'local') await connect(profile, {}); else showDialog(profile.kind, profile); } });
-  const searchBox = document.createElement('input'); searchBox.className = 'search-box'; searchBox.placeholder = '출력 검색'; searchBox.ariaLabel = '터미널 출력 검색'; searchBox.addEventListener('keydown', event => { if (event.key === 'Enter') search.findNext(searchBox.value); });
+  const searchBox = document.createElement('input'); searchBox.className = 'search-box'; searchBox.placeholder = '출력 검색'; searchBox.ariaLabel = '터미널 출력 검색';
   const wrap = document.createElement('div'); wrap.className = 'terminal-wrap'; const host = document.createElement('div'); host.className = 'terminal-host'; const hex = document.createElement('pre'); hex.className = 'hex-view'; hex.hidden = true; wrap.append(host, hex);
   const message = document.createElement('div'); message.className = 'session-message'; message.textContent = '연결 준비 중';
   const sendbar = document.createElement('form'); sendbar.className = 'sendbar'; sendbar.hidden = profile.kind !== 'serial';
-  const view: View = { id, profile, state: 'connecting', term, fit: fitAddon, search, pane, message, hex, hexMode: false, hexHistory: new HexHistory(), log: false, logButton, connectButton: reconnectButton, observer: new ResizeObserver(() => fit(view)) };
-  toolbar.append(detail, searchBox, button('HEX', () => { view.hexMode = !view.hexMode; hex.hidden = !view.hexMode; scheduleHex(view); }), button('지우기', () => { term.clear(); view.hexHistory.clear(); hex.textContent = ''; }), logButton);
+  const view: View = { id, profile, label: profile.name, state: 'connecting', term, fit: fitAddon, search, pane, message, hex, hexMode: false, hexHistory: new HexHistory(), log: false, logButton, connectButton: reconnectButton, observer: new ResizeObserver(() => fit(view)), history: [], historyIndex: -1, historyDraft: '', searchInput: searchBox, searchCount: document.createElement('span'), searchOptions: { caseSensitive: false, regex: false } };
+  const searchBar = buildSearchBar(view, search);
+  toolbar.append(detail, searchBar, button('HEX', () => { view.hexMode = !view.hexMode; hex.hidden = !view.hexMode; scheduleHex(view); }), button('지우기', () => { term.clear(); view.hexHistory.clear(); hex.textContent = ''; }), logButton);
   if (profile.kind === 'ssh') toolbar.append(button('SFTP', () => showFiles(view)));
   const sendToggle = button('송신', () => { sendbar.hidden = !sendbar.hidden; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); if (!sendbar.hidden) sendbar.querySelector('input')?.focus(); else term.focus(); });
   sendToggle.title = 'TEXT/HEX 송신줄 표시'; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); toolbar.append(sendToggle, reconnectButton); pane.append(toolbar, wrap);
@@ -273,7 +447,22 @@ async function connect(profile: Profile, credentials: Credentials): Promise<void
   const eol = document.createElement('select'); for (const [label, name] of [['CR', 'cr'], ['LF', 'lf'], ['CR+LF', 'crlf'], ['없음', 'none']]) eol.add(new Option(label, name)); eol.value = profile.kind === 'serial' ? profile.eol : 'cr';
   const sendButton = document.createElement('button'); sendButton.textContent = '전송 →'; sendButton.type = 'submit'; sendbar.append(mode, command, eol, sendButton);
   let sending = false;
-  sendbar.addEventListener('submit', event => { event.preventDefault(); if (sending) return; const bytes = (() => { try { return encodeSend(command.value, mode.value as 'text' | 'hex', eol.value); } catch (error) { toast((error as Error).message); return null; } })(); if (!bytes?.length) return; sending = true; sendButton.disabled = true; void run(async () => { await send(view, bytes); command.value = ''; }).finally(() => { sending = false; sendButton.disabled = false; }); });
+  // ↑/↓로 이전 송신 내용을 다시 불러온다. 입력을 고치면 기록 탐색을 끝낸다.
+  command.addEventListener('input', () => { view.historyIndex = -1; });
+  command.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    if (!browseHistory(view, command, event.key === 'ArrowUp' ? -1 : 1)) return;
+    event.preventDefault();
+    command.setSelectionRange(command.value.length, command.value.length);
+  });
+  sendbar.addEventListener('submit', event => {
+    event.preventDefault(); if (sending) return;
+    const text = command.value;
+    const bytes = (() => { try { return encodeSend(text, mode.value as 'text' | 'hex', eol.value); } catch (error) { toast((error as Error).message); return null; } })();
+    if (!bytes?.length) return;
+    sending = true; sendButton.disabled = true;
+    void run(async () => { await send(view, bytes); recordHistory(view, text); command.value = ''; }).finally(() => { sending = false; sendButton.disabled = false; });
+  });
   pane.append(sendbar, message); element('workspace').append(pane); views.set(id, view); activeId = id; homeSelected = false; renderWorkspace(); term.open(host); view.observer.observe(wrap); fit(view);
   // 전송 순서를 유지하고 실패한 명령을 재연결 후 재전송하지 않는다.
   let writes: Promise<void> = Promise.resolve();
@@ -309,9 +498,7 @@ function renderWorkspace(): void {
   for (const view of views.values()) {
     view.pane.hidden = home || (view.id !== activeId && view.id !== secondaryId);
     scheduleHex(view);
-    const tab = button('', () => { activeId = view.id; homeSelected = false; renderWorkspace(); view.term.focus(); }); tab.className = `tab${view.id === activeId && !home ? ' active' : ''}`; tab.title = `${view.profile.name} · ${description(view.profile)}`;
-    const dot = document.createElement('span'); dot.className = `state-dot ${view.state}`; const name = document.createElement('span'); name.className = 'tab-name'; name.textContent = view.profile.name;
-    const close = document.createElement('span'); close.textContent = '×'; close.className = 'close'; close.title = '세션 닫기'; close.addEventListener('click', event => { event.stopPropagation(); void run(() => closeView(view.id)); }); tab.append(dot, name, close); tabs.append(tab);
+    tabs.append(renderTab(view, home));
   }
   element('session-count').textContent = `활성 연결 ${[...views.values()].filter(view => view.state === 'connected').length}`;
   requestAnimationFrame(() => { for (const view of views.values()) fit(view); });
@@ -371,7 +558,7 @@ function onEvent(event: AppEvent): void {
     scheduleHex(view);
   } else if (event.type === 'state') {
     view.state = event.state; view.message.textContent = event.message; view.message.hidden = event.state === 'connected'; view.message.classList.toggle('error', event.state === 'error'); view.connectButton.textContent = event.state === 'connected' || event.state === 'connecting' ? '연결 종료' : '다시 연결'; view.logButton.disabled = event.state !== 'connected';
-    element('status').textContent = `${view.profile.name} · ${event.message}`; renderWorkspace();
+    element('status').textContent = `${view.label} · ${event.message}`; renderWorkspace();
   } else if (event.type === 'log') {
     view.log = event.active; view.logButton.textContent = event.active ? '● 로그 종료' : '○ 로그'; view.logButton.classList.toggle('recording', event.active); view.logButton.title = event.message; view.message.textContent = event.message; view.message.hidden = event.active || event.message === '로그 저장 종료';
     if (!event.active && event.message.includes('실패')) toast(event.message);
