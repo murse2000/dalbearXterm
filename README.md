@@ -65,11 +65,12 @@ npm run test:updates:integration
 npm run test:native
 npm run test:ui
 npm run test:ui:palette
+npm run test:ui:visual
 ```
 
 최종 배포 파일은 `release/github`에 생성됩니다. 원본 네이티브 빌드는 `release/native-win-x64`이며 업데이트용 설치 메타데이터가 없으므로 이 경로에서는 앱 내 업데이트를 제공하지 않습니다. GitHub 릴리즈의 설치형·포터블을 사용하세요.
 
-`npm test`는 가상 시리얼과 로컬 SSH·SFTP를 사용합니다. 네이티브 UI 시험은 세션 저장·SSH 송수신·SFTP 목록·HEX·PowerShell·분할 화면·수신 SHA-256·정상 종료를 검증합니다. 업데이트 시험은 동의 거부, 실패, 설치 보류, 재실행, 중복 설치 방지와 실제 구버전 포터블의 손상 패키지 거부·버전 교체·설정 보존을 검증합니다. 실제 장비에는 시험 명령을 송신하지 않습니다.
+`npm test`는 가상 시리얼과 로컬 SSH·SFTP를 사용합니다. 네이티브 UI 시험은 세션 저장·SSH 송수신·SFTP 목록·HEX·PowerShell·분할 화면·수신 SHA-256·정상 종료를 검증합니다. `test:ui:palette`는 명령 팔레트·라이브러리 흐름과 함께 일반·다크 테마에서 창 폭·넘침·선택 행 글자 대비를 실측하고, `test:ui:visual`은 두 테마의 화면을 캡처합니다. 업데이트 시험은 동의 거부, 실패, 설치 보류, 재실행, 중복 설치 방지와 실제 구버전 포터블의 손상 패키지 거부·버전 교체·설정 보존을 검증합니다. 실제 장비에는 시험 명령을 송신하지 않습니다.
 
 60분 연속 수신·8시간 다중 세션·실장비 제어 신호·깨끗한 PC 검증은 별도로 필요합니다. X11·RDP·VNC·자동 플래싱은 구현 범위에 포함하지 않습니다. 성능 측정 조건은 [PERFORMANCE.md](research/PERFORMANCE.md)에 있습니다.
 
