@@ -4,6 +4,33 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createFixture } = require('./fixture.cjs');
 
+// 다이얼로그 폭·오버플로·선택 행 대비를 실측해 시각적 회귀를 막는다.
+async function layoutMetrics(page) {
+  return page.evaluate(() => {
+    const parse = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const luminance = rgb => {
+      const channels = rgb.map(value => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const contrast = (a, b) => { const [x, y] = [luminance(parse(a)), luminance(parse(b))].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    const palette = document.getElementById('command-palette-dialog');
+    const library = document.getElementById('command-library-dialog');
+    const selected = palette.querySelector('.command-palette-row.selected');
+    const style = selected ? getComputedStyle(selected) : undefined;
+    return {
+      paletteWidth: palette.getBoundingClientRect().width,
+      paletteOverflowX: palette.scrollWidth > palette.clientWidth,
+      paletteOverflowY: palette.scrollHeight > palette.clientHeight,
+      headingDecoration: getComputedStyle(palette.querySelector('.eyebrow')).textDecorationLine,
+      headingFits: (() => { const heading = palette.querySelector(':scope > .dialog-heading'); return heading.getBoundingClientRect().top >= palette.getBoundingClientRect().top; })(),
+      selectedContrast: style ? contrast(style.color, style.backgroundColor) : null,
+      libraryWidth: library.getBoundingClientRect().width,
+      libraryOverflowX: library.scrollWidth > library.clientWidth,
+      libraryHeadingFits: (() => { const box = library.getBoundingClientRect(); const heading = library.querySelector(':scope > .dialog-heading').getBoundingClientRect(); return heading.top >= box.top && heading.right <= box.right + 0.5 && heading.left >= box.left - 0.5; })(),
+    };
+  });
+}
+
 // 명령 팔레트와 라이브러리 다이얼로그의 UI 흐름을 검증한다.
 // 새 다이얼로그와 단축키, 저장/편집/삭제, Enter 실행, 화살표 선택을 모두 다룬다.
 (async () => {
@@ -107,9 +134,36 @@ const { createFixture } = require('./fixture.cjs');
     await page.keyboard.press('Enter');
     await page.waitForSelector('#toast:not([hidden])');
     assert.ok((await page.locator('#toast').textContent()).includes('먼저 세션을 연결하세요'));
+    await page.locator('#command-palette-cancel').click();
+    await page.waitForFunction(() => !document.getElementById('command-palette-dialog').open);
+    // 다이얼로그 폭·오버플로·선택 행 대비를 두 테마에서 실측한다.
+    const checks = [];
+    for (const theme of ['light', 'dark']) {
+      await page.locator('#theme-select').selectOption(theme);
+      await page.waitForFunction(name => document.documentElement.dataset.theme === name, theme);
+      await page.keyboard.press('Control+Shift+P');
+      await page.waitForSelector('#command-palette-dialog[open]');
+      await page.waitForSelector('.command-palette-row.selected');
+      const palette = await layoutMetrics(page);
+      assert.equal(palette.paletteOverflowX, false, `${theme}: 팔레트 가로 넘침 없음`);
+      assert.equal(palette.paletteOverflowY, false, `${theme}: 팔레트 세로 넘침 없음`);
+      assert.equal(palette.headingDecoration, 'none', `${theme}: 헤더 장식선 없음`);
+      assert.equal(palette.headingFits, true, `${theme}: 헤더가 다이얼로그 안에 있음`);
+      assert.ok(palette.paletteWidth >= 520, `${theme}: 팔레트 폭 ${palette.paletteWidth}`);
+      assert.ok(palette.selectedContrast >= 4.5, `${theme}: 선택 행 대비 ${palette.selectedContrast?.toFixed(2)}`);
+      await page.locator('#command-palette-manage').click();
+      await page.waitForSelector('#command-library-dialog[open]');
+      const library = await layoutMetrics(page);
+      assert.equal(library.libraryOverflowX, false, `${theme}: 라이브러리 가로 넘침 없음`);
+      assert.equal(library.libraryHeadingFits, true, `${theme}: 라이브러리 헤더가 다이얼로그 안에 있음`);
+      assert.ok(library.libraryWidth >= 760, `${theme}: 라이브러리 폭 ${library.libraryWidth}`);
+      await page.locator('#command-library-close').click();
+      checks.push({ theme, paletteWidth: palette.paletteWidth, selectedContrast: Number(palette.selectedContrast.toFixed(2)), libraryWidth: library.libraryWidth });
+    }
+    await page.locator('#theme-select').selectOption('light');
     assert.deepEqual(errors, []);
     await page.screenshot({ path: path.join(root, 'command-palette.png') });
-    console.log(JSON.stringify({ passed: true, checks: ['Ctrl+Shift+P 열기', '시작 화면 버튼 열기', '검색 필터', '화살표 + Enter 실행', '라이브러리 저장', '라이브러리 편집', '라이브러리 삭제', '비활성 세션 거부'], screenshots: root }, null, 2));
+    console.log(JSON.stringify({ passed: true, checks: ['Ctrl+Shift+P 열기', '시작 화면 버튼 열기', '검색 필터', '화살표 + Enter 실행', '라이브러리 저장', '라이브러리 편집', '라이브러리 삭제', '비활성 세션 거부', '레이아웃·대비 실측'], layout: checks, screenshots: root }, null, 2));
   } catch (error) {
     const pages = application.windows(); if (pages[0]) { await pages[0].screenshot({ path: path.join(root, 'failure.png') }); console.error(await pages[0].locator('body').innerText()); }
     throw error;

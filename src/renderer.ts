@@ -99,7 +99,7 @@ function renderCommandLibraryList(): void {
     const label = document.createElement('div'); const name = document.createElement('strong'); name.textContent = command.name; const body = document.createElement('small'); body.textContent = command.mode === 'hex' ? `${command.body} · HEX` : `${command.body}${command.eol !== 'none' ? ` · ${command.eol.toUpperCase()}` : ''}`; label.append(name, body);
     const edit = button('편집', () => fillCommandForm(command));
     const remove = button('삭제', async () => { if (confirm(`저장된 명령 "${command.name}"을 삭제할까요?`)) { commands = await api.deleteCommand(command.id); renderCommandPaletteList(); renderCommandLibraryList(); } });
-    item.append(label, remove, edit); list.append(item);
+    item.append(label, edit, remove); list.append(item);
   }
 }
 function fillCommandForm(command: SavedCommand | null): void {
