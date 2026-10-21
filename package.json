@@ -15,6 +15,7 @@
     "test:ui:workspace": "npm run build && node tests/ui-workspace.cjs",
     "test:ui:display": "npm run build && node tests/ui-display.cjs",
     "test:native": "node tests/native-ui.cjs",
+    "test:native:display": "node tests/native-display.cjs",
     "test:updates": "node scripts/test-updates.mjs",
     "test:updates:integration": "node scripts/test-update-integration.mjs",
     "test:updates:github": "node scripts/test-github-feed.mjs",

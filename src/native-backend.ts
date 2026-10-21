@@ -55,6 +55,14 @@ async function main(): Promise<void> {
   handle('highlights', z.undefined(), () => store.highlights());
   handle('highlight-save', highlightSchema, body => store.saveHighlight(body));
   handle('highlight-delete', idBody, body => store.removeHighlight(body.id));
+  handle('commands', z.undefined(), () => store.commands());
+  handle('command-save', commandSchema, body => store.saveCommand(body));
+  handle('command-delete', idBody, body => store.removeCommand(body.id));
+  handle('command-run', idBody.extend({ commandId: idSchema }), async body => {
+    const command = store.commands().find(item => item.id === body.commandId);
+    if (!command) throw new Error('저장된 명령이 없습니다. 명령 팔레트에서 다시 선택하세요.');
+    await connections.runCommand(body.id, command);
+  });
   handle('theme-set', themeSchema, async theme => { await store.setTheme(theme); send({ kind: 'theme', theme }); return theme; });
   handle('profile-save', profileSchema, profile => store.save(profile)); handle('profile-delete', idBody, body => store.remove(body.id));
   handle('ports', z.undefined(), () => SerialPort.list());
