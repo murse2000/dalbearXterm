@@ -1,12 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { commandSchema, homeAppearanceSchema, profileSchema, themeSchema, type HomeAppearance, type Profile, type SavedCommand, type Theme } from './model';
+import { commandSchema, displaySchema, highlightSchema, homeAppearanceSchema, profileSchema, themeSchema, DEFAULT_DISPLAY, type Display, type Highlight, type HomeAppearance, type Profile, type SavedCommand, type Theme } from './model';
 
-const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light'), home: homeAppearanceSchema.default({ background: null, logoDataUrl: null }), commands: z.array(commandSchema).max(500).default([]) });
+const fileSchema = z.object({ version: z.literal(1), profiles: z.array(profileSchema).max(1000), knownHosts: z.record(z.string(), z.string()), theme: themeSchema.default('light'), home: homeAppearanceSchema.default({ background: null, logoDataUrl: null }), commands: z.array(commandSchema).max(500).default([]), display: displaySchema.default(DEFAULT_DISPLAY), highlights: z.array(highlightSchema).max(100).default([]) });
 type Settings = z.infer<typeof fileSchema>;
 export class Store {
-  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light', home: { background: null, logoDataUrl: null }, commands: [] };
+  private settings: Settings = { version: 1, profiles: [], knownHosts: {}, theme: 'light', home: { background: null, logoDataUrl: null }, commands: [], display: { ...DEFAULT_DISPLAY }, highlights: [] };
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private readonly directory: string) {}
   async load(): Promise<void> {
@@ -62,5 +62,21 @@ export class Store {
   async removeCommand(id: string): Promise<SavedCommand[]> {
     await this.update(next => { next.commands = next.commands.filter(item => item.id !== id); });
     return this.commands();
+  }
+  display(): Display { return structuredClone(this.settings.display); }
+  async setDisplay(display: unknown): Promise<Display> {
+    const clean = displaySchema.parse(display);
+    await this.update(next => { next.display = clean; });
+    return structuredClone(clean);
+  }
+  highlights(): Highlight[] { return structuredClone(this.settings.highlights); }
+  async saveHighlight(highlight: unknown): Promise<Highlight[]> {
+    const clean = highlightSchema.parse(highlight);
+    await this.update(next => { next.highlights = [...next.highlights.filter(item => item.id !== clean.id), clean]; });
+    return this.highlights();
+  }
+  async removeHighlight(id: string): Promise<Highlight[]> {
+    await this.update(next => { next.highlights = next.highlights.filter(item => item.id !== id); });
+    return this.highlights();
   }
 }

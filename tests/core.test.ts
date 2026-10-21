@@ -9,7 +9,7 @@ import { Connections } from '../src/connections';
 import { Store } from '../src/store';
 import { Transfers } from '../src/transfers';
 import { SessionLog } from '../src/logger';
-import { encodeSend, parseHex, type SerialProfile, type SSHProfile, type AppEvent, type SavedCommand } from '../src/model';
+import { encodeSend, parseHex, type SerialProfile, type SSHProfile, type AppEvent, type SavedCommand, type Highlight, DEFAULT_DISPLAY } from '../src/model';
 const { createFixture } = require('./fixture.cjs');
 async function folder(t: test.TestContext): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), 'dalbear-test-'));
@@ -122,4 +122,29 @@ test('runCommand는 연결된 시리얼 세션에 저장된 명령을 그대로 
   await manager.runCommand(id, command);
   assert.deepEqual(mock!.port!.recording, Buffer.from('AT+Z\r\n'));
   await assert.rejects(manager.runCommand(randomUUID(), command));
+});
+test('터미널 표시 설정과 키워드 하이라이트는 저장·검증·재시작 복원된다', async t => {
+  const dir = await folder(t); const store = new Store(dir); await store.load();
+  assert.deepEqual(store.display(), DEFAULT_DISPLAY, '기존 설정은 기본 표시값으로 시작');
+  assert.deepEqual(store.highlights(), []);
+  const display = { fontFamily: 'D2Coding, monospace', fontSize: 18, lineHeight: 1.3, cursorStyle: 'bar' as const, cursorBlink: false, scrollback: 20000 };
+  assert.deepEqual(await store.setDisplay(display), display);
+  for (const bad of [{ ...display, fontSize: 40 }, { ...display, lineHeight: 3 }, { ...display, cursorStyle: 'beam' }, { ...display, scrollback: 10 }, { ...display, fontFamily: ' ' }]) {
+    await assert.rejects(store.setDisplay(bad));
+  }
+  const warning: Highlight = { id: randomUUID(), pattern: 'ERROR', color: '#ff6b6b', caseSensitive: false, regex: false, enabled: true };
+  const fail: Highlight = { id: randomUUID(), pattern: '^FAIL\\s+\\d+', color: '#ffcc00', caseSensitive: true, regex: true, enabled: true };
+  await store.saveHighlight(warning); await store.saveHighlight(fail);
+  assert.equal(store.highlights().length, 2);
+  await store.saveHighlight({ ...warning, color: '#ffffff' });
+  assert.equal(store.highlights().find(item => item.id === warning.id)?.color, '#ffffff');
+  await assert.rejects(store.saveHighlight({ ...warning, color: 'red' }));
+  await assert.rejects(store.saveHighlight({ ...warning, pattern: '' }));
+  await store.removeHighlight(fail.id);
+  assert.deepEqual(store.highlights().map(item => item.id), [warning.id]);
+  const restored = new Store(dir); await restored.load();
+  assert.equal(restored.display().fontSize, 18);
+  assert.equal(restored.highlights().length, 1);
+  const saved = await readFile(path.join(dir, 'settings.json'), 'utf8');
+  assert.ok(!saved.includes('password') && !saved.includes('passphrase'));
 });

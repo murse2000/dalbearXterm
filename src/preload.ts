@@ -33,6 +33,11 @@ const api: Api = {
   saveCommand: command => invoke<SavedCommand[]>('command-save', command),
   deleteCommand: id => invoke<SavedCommand[]>('command-delete', { id }),
   runCommand: (commandId, targetId) => invoke('command-run', { id: targetId, commandId }),
+  display: () => invoke('display'),
+  setDisplay: display => invoke('display-set', display),
+  highlights: () => invoke('highlights'),
+  saveHighlight: highlight => invoke('highlight-save', highlight),
+  deleteHighlight: id => invoke('highlight-delete', { id }),
   onMenu: listener => {
     const handler = (_event: Electron.IpcRendererEvent, action: MenuAction) => listener(action);
     ipcRenderer.on('menu-action', handler);

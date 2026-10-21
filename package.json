@@ -1,6 +1,6 @@
 {
   "name": "dalbear-xterm",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "시리얼·SSH 장비 개발 터미널",
   "private": true,
   "main": "dist/main.js",
@@ -13,6 +13,7 @@
     "test:ui:palette": "npm run build && node tests/ui-command-palette.cjs",
     "test:ui:visual": "npm run build && node tests/visual-command-palette.cjs",
     "test:ui:workspace": "npm run build && node tests/ui-workspace.cjs",
+    "test:ui:display": "npm run build && node tests/ui-display.cjs",
     "test:native": "node tests/native-ui.cjs",
     "test:updates": "node scripts/test-updates.mjs",
     "test:updates:integration": "node scripts/test-update-integration.mjs",

@@ -22,6 +22,7 @@
     <span class="toolbar-divider"></span>
     <button id="refresh-ports" class="tool-button" data-icon="refresh"><span>포트 새로고침</span></button>
     <label class="theme-control">테마<select id="theme-select" aria-label="화면 테마"><option value="light">일반</option><option value="dark">다크</option></select></label>
+    <button id="open-display-settings" class="tool-button" title="터미널 글꼴·크기와 키워드 하이라이트 설정 (Ctrl+,)"><span>터미널 설정</span></button>
     <div class="brand"><img class="brand-mark" src="icon.svg" alt="달곰 터미널"><div>dalbear<span>Xterm</span><small>시리얼 · SSH · SFTP</small></div></div>
   </header>
   <div class="app-body">
@@ -126,6 +127,56 @@
         <ul id="command-library-list" class="command-library-list" aria-label="저장된 명령 목록"></ul>
       </div>
     </div>
+  </dialog>
+  <dialog id="terminal-settings-dialog" aria-labelledby="terminal-settings-title">
+    <form id="terminal-settings-form">
+      <div class="dialog-heading"><div><span class="eyebrow">표시 설정</span><h2 id="terminal-settings-title">터미널 설정</h2></div><button id="terminal-settings-close" type="button" class="icon-button" aria-label="터미널 설정 닫기">×</button></div>
+      <div class="settings-grid">
+        <label for="display-font">글꼴
+          <input id="display-font" list="display-font-choices" maxlength="200" autocomplete="off">
+        </label>
+        <label for="display-size">글자 크기 (8–32)
+          <input id="display-size" type="number" min="8" max="32" step="1">
+        </label>
+        <label for="display-line-height">줄 간격 (1.0–2.0)
+          <input id="display-line-height" type="number" min="1" max="2" step="0.05">
+        </label>
+        <label for="display-cursor">커서 모양
+          <select id="display-cursor"><option value="block">블록</option><option value="underline">밑줄</option><option value="bar">막대</option></select>
+        </label>
+        <label class="check"><input id="display-cursor-blink" type="checkbox">커서 깜박임</label>
+        <label for="display-scrollback">스크롤백 줄 수 (100–200000)
+          <input id="display-scrollback" type="number" min="100" max="200000" step="100">
+        </label>
+      </div>
+      <datalist id="display-font-choices">
+        <option value="Cascadia Mono, Consolas, &quot;Malgun Gothic&quot;, monospace"></option>
+        <option value="Consolas, &quot;Malgun Gothic&quot;, monospace"></option>
+        <option value="D2Coding, Consolas, monospace"></option>
+        <option value="&quot;JetBrains Mono&quot;, Consolas, monospace"></option>
+        <option value="&quot;Nanum Gothic Coding&quot;, Consolas, monospace"></option>
+        <option value="monospace"></option>
+      </datalist>
+      <div class="display-preview" aria-hidden="true"><span id="display-preview-text">Aa 가나다 0123 → _</span></div>
+      <div class="settings-section-heading"><h3>키워드 하이라이트</h3><span id="highlight-count" class="badge">0</span></div>
+      <p class="form-note">수신 화면에 나타난 키워드의 글자색을 바꿉니다. 원본 로그와 복사한 텍스트는 바뀌지 않습니다.</p>
+      <div id="highlight-editor" class="highlight-editor">
+        <label for="highlight-pattern">키워드
+          <input id="highlight-pattern" type="text" maxlength="200" autocomplete="off" placeholder="예: ERROR 또는 ^FAIL">
+        </label>
+        <label for="highlight-color">색상
+          <input id="highlight-color" type="color" value="#ff6b6b" aria-label="하이라이트 색상">
+        </label>
+        <label class="check"><input id="highlight-case" type="checkbox">대소문자 구분</label>
+        <label class="check"><input id="highlight-regex" type="checkbox">정규식</label>
+        <label class="check"><input id="highlight-enabled" type="checkbox" checked>사용</label>
+        <button id="highlight-apply" type="button">추가</button>
+        <button id="highlight-new" type="button">새로 입력</button>
+      </div>
+      <ul id="highlight-list" class="highlight-list" aria-label="키워드 하이라이트 목록"></ul>
+      <div id="terminal-settings-error" class="form-error" role="alert"></div>
+      <div class="dialog-footer"><button id="terminal-settings-cancel" type="button">취소</button><button id="terminal-settings-save" class="primary" type="submit">저장</button></div>
+    </form>
   </dialog>
   <script src="renderer.js"></script>
 </body>

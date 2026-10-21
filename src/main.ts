@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Store } from './store';
 import { Connections } from './connections';
 import { Transfers } from './transfers';
-import { commandSchema, credentialsSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
+import { commandSchema, credentialsSchema, displaySchema, highlightSchema, homeAppearanceSchema, idSchema, profileSchema, sizeSchema, themeSchema, type AppEvent, type MenuAction, type Theme } from './model';
 
 if (process.env.DALBEAR_TEST_DATA) app.setPath('userData', process.env.DALBEAR_TEST_DATA);
 app.setAppUserModelId('com.hrobotics.dalbearxterm');
@@ -31,7 +31,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: '터미널', submenu: [command('로컬 터미널 시작', 'local', 'Ctrl+Shift+T'), command('명령 팔레트', 'palette', 'Ctrl+Shift+P'), command('출력 지우기', 'clear'), command('출력 검색', 'search', 'Ctrl+Shift+F'), { type: 'separator' }, { role: 'quit', label: '종료' }] },
     { label: '세션', submenu: [command('새 시리얼 연결', 'serial', 'Ctrl+Shift+N'), command('새 SSH 연결', 'ssh'), command('저장된 세션', 'sessions'), { type: 'separator' }, command('현재 연결 종료', 'disconnect')] },
-    { label: '보기', submenu: [command('시작 화면', 'home'), command('화면 분할', 'split'), command('SFTP 파일', 'files'), { label: '테마', submenu: (['light', 'dark'] as Theme[]).map(theme => ({ ...command(theme === 'dark' ? '다크' : '일반', `theme-${theme}`), id: `theme-${theme}`, type: 'radio' as const, checked: store.theme() === theme })) }, { type: 'separator' }, { role: 'togglefullscreen', label: '전체 화면' }] },
+    { label: '보기', submenu: [command('시작 화면', 'home'), command('화면 분할', 'split'), command('SFTP 파일', 'files'), command('터미널 설정', 'display', 'Ctrl+,'), { label: '테마', submenu: (['light', 'dark'] as Theme[]).map(theme => ({ ...command(theme === 'dark' ? '다크' : '일반', `theme-${theme}`), id: `theme-${theme}`, type: 'radio' as const, checked: store.theme() === theme })) }, { type: 'separator' }, { role: 'togglefullscreen', label: '전체 화면' }] },
     { label: '도구', submenu: [command('포트 새로고침', 'refresh'), command('로그 저장 시작 / 종료', 'log')] },
     { label: '도움말', submenu: [{ label: 'dalbearXterm 정보', click: () => { void dialog.showMessageBox(window, { type: 'info', message: `dalbearXterm ${app.getVersion()}`, detail: '시리얼 · SSH · SFTP 장비 개발 터미널', buttons: ['확인'] }); } }] }
   ]));
@@ -114,7 +114,11 @@ app.whenReady().then(async () => {
     return choice.canceled ? null : choice.filePaths[0];
   });
   handle('commands', z.undefined(), () => store.commands());
-  handle('command-save', commandSchema, body => store.saveCommand(body));
+  handle('display', z.undefined(), () => store.display());
+  handle('display-set', displaySchema, body => store.setDisplay(body));
+  handle('highlights', z.undefined(), () => store.highlights());
+  handle('highlight-save', highlightSchema, body => store.saveHighlight(body));
+  handle('highlight-delete', idBody, body => store.removeHighlight(body.id));  handle('command-save', commandSchema, body => store.saveCommand(body));
   handle('command-delete', idBody, body => store.removeCommand(body.id));
   handle('command-run', idBody.extend({ commandId: idSchema }), async body => {
     const list = store.commands();

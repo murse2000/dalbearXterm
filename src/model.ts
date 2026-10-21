@@ -24,6 +24,32 @@ export const homeAppearanceSchema = z.object({
   logoDataUrl: z.string().max(400000).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/).nullable()
 });
 export type HomeAppearance = z.infer<typeof homeAppearanceSchema>;
+export const DEFAULT_DISPLAY = {
+  fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace',
+  fontSize: 13,
+  lineHeight: 1.15,
+  cursorStyle: 'block' as const,
+  cursorBlink: true,
+  scrollback: 5000
+};
+export const displaySchema = z.object({
+  fontFamily: z.string().trim().min(1).max(200),
+  fontSize: z.number().int().min(8).max(32),
+  lineHeight: z.number().min(1).max(2),
+  cursorStyle: z.enum(['block', 'underline', 'bar']),
+  cursorBlink: z.boolean(),
+  scrollback: z.number().int().min(100).max(200000)
+});
+export type Display = z.infer<typeof displaySchema>;
+export const highlightSchema = z.object({
+  id: z.uuid(),
+  pattern: z.string().min(1).max(200),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i),
+  caseSensitive: z.boolean(),
+  regex: z.boolean(),
+  enabled: z.boolean()
+});
+export type Highlight = z.infer<typeof highlightSchema>;
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export type AppEvent =
   | { type: 'data'; id: string; bytes: Uint8Array }
@@ -32,13 +58,18 @@ export type AppEvent =
   | { type: 'transfer'; id: string; transferId: string; bytes: number; total: number; state: 'running' | 'completed' | 'cancelled' | 'error'; message: string };
 export interface RemoteEntry { name: string; directory: boolean; size: number; modified: number; }
 export interface PortInfo { path: string; manufacturer?: string; serialNumber?: string; }
-export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'palette' | 'theme-light' | 'theme-dark';
+export type MenuAction = 'serial' | 'ssh' | 'local' | 'home' | 'sessions' | 'split' | 'files' | 'log' | 'refresh' | 'disconnect' | 'clear' | 'search' | 'palette' | 'display' | 'theme-light' | 'theme-dark';
 export interface Api {
   homeAppearance(): Promise<HomeAppearance>;
   setHomeAppearance(appearance: HomeAppearance): Promise<HomeAppearance>;
   theme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<Theme>;
   onTheme(listener: (theme: Theme) => void): () => void;
+  display(): Promise<Display>;
+  setDisplay(display: Display): Promise<Display>;
+  highlights(): Promise<Highlight[]>;
+  saveHighlight(highlight: Highlight): Promise<Highlight[]>;
+  deleteHighlight(id: string): Promise<Highlight[]>;
   profiles(): Promise<Profile[]>;
   saveProfile(profile: Profile): Promise<Profile[]>;
   deleteProfile(id: string): Promise<Profile[]>;

@@ -32,6 +32,7 @@ const api: Api = {
   listFiles: (id, path) => invoke('files', { id, path }), upload: (id, path) => invoke('upload', { id, path }), download: (id, path) => invoke('download', { id, path }),
   cancelTransfer: transferId => invoke('transfer-cancel', { transferId }), chooseKey: () => invoke('choose-key'),
   commands: () => invoke<SavedCommand[]>('commands'), saveCommand: command => invoke<SavedCommand[]>('command-save', command), deleteCommand: id => invoke<SavedCommand[]>('command-delete', { id }), runCommand: (commandId, targetId) => invoke('command-run', { id: targetId, commandId }),
+  display: () => invoke('display'), setDisplay: display => invoke('display-set', display), highlights: () => invoke('highlights'), saveHighlight: highlight => invoke('highlight-save', highlight), deleteHighlight: id => invoke('highlight-delete', { id }),
   onEvent: listener => { events.add(listener); return () => { events.delete(listener); }; }, onMenu: listener => { menus.add(listener); return () => { menus.delete(listener); }; }
 };
 Object.defineProperty(window, 'terminal', { value: Object.freeze(api), writable: false });

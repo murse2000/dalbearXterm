@@ -52,7 +52,7 @@ class NativeHost : Form {
     Add(terminal, "출력 지우기", "clear"); Add(terminal, "출력 검색", "search", Keys.Control | Keys.Shift | Keys.F);
     terminal.DropDownItems.Add(new ToolStripSeparator()); terminal.DropDownItems.Add("종료", null, delegate { Close(); });
     var sessions = new ToolStripMenuItem("세션"); Add(sessions, "새 시리얼 연결", "serial", Keys.Control | Keys.Shift | Keys.N); Add(sessions, "새 SSH 연결", "ssh"); Add(sessions, "저장된 세션", "sessions"); Add(sessions, "현재 연결 종료", "disconnect");
-    var view = new ToolStripMenuItem("보기"); Add(view, "시작 화면", "home"); Add(view, "화면 분할", "split"); Add(view, "SFTP 파일", "files");
+    var view = new ToolStripMenuItem("보기"); Add(view, "시작 화면", "home"); Add(view, "화면 분할", "split"); Add(view, "SFTP 파일", "files"); Add(view, "터미널 설정", "display", Keys.Control | Keys.Oemcomma);
     var themes = new ToolStripMenuItem("테마"); themes.DropDownItems.AddRange(new ToolStripItem[] { lightTheme, darkTheme }); view.DropDownItems.Add(themes);
     lightTheme.Click += delegate { web.CoreWebView2.PostWebMessageAsJson(json.Serialize(new { kind = "menu", action = "theme-light" })); };
     darkTheme.Click += delegate { web.CoreWebView2.PostWebMessageAsJson(json.Serialize(new { kind = "menu", action = "theme-dark" })); };

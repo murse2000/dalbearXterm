@@ -1,11 +1,11 @@
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type IDecoration, type IMarker, type IBufferLine } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { HexHistory } from './hex-history';
 import { terminalThemes } from './theme';
 import { homeTextColor, readHomeLogo } from './home-appearance';
-import { encodeSend, profileSchema, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme, type HomeAppearance, type SavedCommand } from './model';
+import { encodeSend, displaySchema, highlightSchema, profileSchema, DEFAULT_DISPLAY, type Api, type AppEvent, type Credentials, type Profile, type ConnectionState, type PortInfo, type Theme, type HomeAppearance, type SavedCommand, type Display, type Highlight } from './model';
 
 declare global { interface Window { terminal: Api } }
 const api = window.terminal;
@@ -26,10 +26,18 @@ interface View {
   log: boolean; logButton: HTMLButtonElement; connectButton: HTMLButtonElement; observer: ResizeObserver;
   label: string; history: string[]; historyIndex: number; historyDraft: string;
   searchInput: HTMLInputElement; searchCount: HTMLElement; searchOptions: { caseSensitive: boolean; regex: boolean };
+  highlightTimer?: ReturnType<typeof setTimeout>;
+  highlightRows: Map<number, { text: string; nodes: { decoration: IDecoration; marker: IMarker }[] }>;
 }
 const views = new Map<string, View>();
 let draggingId: string | undefined;
 let renamingId: string | undefined;
+let display: Display = { ...DEFAULT_DISPLAY };
+let displayDraft: Display = { ...DEFAULT_DISPLAY };
+let displayBeforeEdit: Display = { ...DEFAULT_DISPLAY };
+let highlights: Highlight[] = [];
+let highlightDraft: Highlight[] = [];
+let highlightEditingId: string | undefined;
 let theme: Theme = 'light';
 let homeAppearance: HomeAppearance = { background: null, logoDataUrl: null };
 let homeDraft = { ...homeAppearance };
@@ -142,6 +150,130 @@ async function deleteCurrentCommand(): Promise<void> {
   renderCommandPaletteList(); renderCommandLibraryList();
   element<HTMLDialogElement>('command-library-dialog').close();
 }
+function updateDisplayPreview(): void {
+  const preview = element('display-preview-text');
+  preview.style.fontFamily = displayDraft.fontFamily;
+  preview.style.fontSize = `${displayDraft.fontSize}px`;
+  preview.style.lineHeight = String(displayDraft.lineHeight);
+}
+function fillDisplayForm(): void {
+  set('display-font', displayDraft.fontFamily);
+  set('display-size', displayDraft.fontSize);
+  set('display-line-height', displayDraft.lineHeight);
+  set('display-cursor', displayDraft.cursorStyle);
+  input('display-cursor-blink').checked = displayDraft.cursorBlink;
+  set('display-scrollback', displayDraft.scrollback);
+  updateDisplayPreview();
+}
+function readDisplayForm(): Display {
+  return displaySchema.parse({
+    fontFamily: value('display-font'),
+    fontSize: Number(value('display-size')),
+    lineHeight: Number(value('display-line-height')),
+    cursorStyle: value('display-cursor'),
+    cursorBlink: input('display-cursor-blink').checked,
+    scrollback: Number(value('display-scrollback'))
+  });
+}
+function previewDisplay(): void {
+  let next: Display;
+  try { next = readDisplayForm(); }
+  catch { element('terminal-settings-error').textContent = '글꼴·글자 크기·줄 간격·스크롤백 값을 확인하세요.'; return; }
+  element('terminal-settings-error').textContent = '';
+  displayDraft = next;
+  updateDisplayPreview();
+  applyDisplay(next);
+}
+function resetHighlightEditor(): void {
+  highlightEditingId = undefined;
+  set('highlight-pattern', '');
+  set('highlight-color', '#ff6b6b');
+  input('highlight-case').checked = false;
+  input('highlight-regex').checked = false;
+  input('highlight-enabled').checked = true;
+  element('highlight-apply').textContent = '추가';
+  element('terminal-settings-error').textContent = '';
+}
+function renderHighlightList(): void {
+  const list = element('highlight-list'); list.replaceChildren();
+  element('highlight-count').textContent = String(highlightDraft.length);
+  if (!highlightDraft.length) {
+    const empty = document.createElement('li'); empty.className = 'profile-empty'; empty.textContent = '등록된 키워드가 없습니다.'; list.append(empty);
+    return;
+  }
+  for (const item of highlightDraft) {
+    const row = document.createElement('li'); row.className = 'highlight-row';
+    const chip = document.createElement('span'); chip.className = 'highlight-chip'; chip.style.background = item.color; chip.title = item.color;
+    const label = document.createElement('div'); const pattern = document.createElement('strong'); pattern.textContent = item.pattern;
+    const meta = document.createElement('small');
+    meta.textContent = [item.regex ? '정규식' : '텍스트', item.caseSensitive ? '대소문자 구분' : '대소문자 무시', item.enabled ? '사용' : '사용 안 함'].join(' · ');
+    label.append(pattern, meta);
+    const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = item.enabled; toggle.ariaLabel = `${item.pattern} 사용`;
+    toggle.addEventListener('change', () => { item.enabled = toggle.checked; renderHighlightList(); });
+    const edit = button('편집', () => {
+      highlightEditingId = item.id;
+      set('highlight-pattern', item.pattern); set('highlight-color', item.color);
+      input('highlight-case').checked = item.caseSensitive; input('highlight-regex').checked = item.regex; input('highlight-enabled').checked = item.enabled;
+      element('highlight-apply').textContent = '수정';
+      input('highlight-pattern').focus();
+    });
+    const remove = button('삭제', () => {
+      highlightDraft = highlightDraft.filter(entry => entry.id !== item.id);
+      if (highlightEditingId === item.id) resetHighlightEditor();
+      renderHighlightList();
+    });
+    row.append(chip, label, toggle, edit, remove); list.append(row);
+  }
+}
+function applyHighlightEditor(): void {
+  const candidate: Highlight = {
+    id: highlightEditingId ?? crypto.randomUUID(),
+    pattern: value('highlight-pattern'),
+    color: value('highlight-color'),
+    caseSensitive: input('highlight-case').checked,
+    regex: input('highlight-regex').checked,
+    enabled: input('highlight-enabled').checked
+  };
+  try {
+    highlightSchema.parse(candidate);
+    if (candidate.regex) new RegExp(candidate.pattern);
+  } catch {
+    element('terminal-settings-error').textContent = '키워드와 색상을 확인하세요. 정규식은 문법이 올바라야 합니다.';
+    return;
+  }
+  highlightDraft = [...highlightDraft.filter(item => item.id !== candidate.id), candidate];
+  resetHighlightEditor();
+  renderHighlightList();
+}
+function openTerminalSettings(): void {
+  displayBeforeEdit = { ...display };
+  displayDraft = { ...display };
+  highlightDraft = highlights.map(item => ({ ...item }));
+  resetHighlightEditor();
+  fillDisplayForm();
+  renderHighlightList();
+  element('terminal-settings-error').textContent = '';
+  element<HTMLDialogElement>('terminal-settings-dialog').showModal();
+}
+function closeTerminalSettings(revert: boolean): void {
+  if (revert) applyDisplay(displayBeforeEdit);
+  element<HTMLDialogElement>('terminal-settings-dialog').close();
+}
+async function saveTerminalSettings(): Promise<void> {
+  let next: Display;
+  try { next = readDisplayForm(); }
+  catch { element('terminal-settings-error').textContent = '글꼴·글자 크기·줄 간격·스크롤백 값을 확인하세요.'; return; }
+  element('terminal-settings-error').textContent = '';
+  display = await api.setDisplay(next);
+  const kept = new Set(highlightDraft.map(item => item.id));
+  for (const item of highlights) if (!kept.has(item.id)) await api.deleteHighlight(item.id);
+  for (const item of highlightDraft) await api.saveHighlight(item);
+  highlights = await api.highlights();
+  applyDisplay(display);
+  for (const view of views.values()) { disposeAllHighlights(view); refreshHighlights(view, true); }
+  element<HTMLDialogElement>('terminal-settings-dialog').close();
+  toast('터미널 설정을 저장했습니다.');
+}
 function renderHomePreview(): void {
   homeBackground(element('home-preview'), homeDraft.background);
   set('home-background', homeDraft.background || getComputedStyle(element('empty')).getPropertyValue('--surface').trim());
@@ -242,6 +374,125 @@ function fit(view: View): void {
   if (view.pane.hidden || !view.pane.clientWidth) return;
   view.fit.fit();
   if (view.state === 'connected') void run(() => api.resize(view.id, view.term.cols, view.term.rows));
+}
+// 터미널 표시 설정과 키워드 하이라이트.
+function terminalOptions(): ConstructorParameters<typeof Terminal>[0] {
+  return {
+    cursorBlink: display.cursorBlink, allowProposedApi: true, fontFamily: display.fontFamily,
+    fontSize: display.fontSize, lineHeight: display.lineHeight, scrollback: display.scrollback,
+    cursorStyle: display.cursorStyle, theme: { ...terminalThemes[theme] }
+  };
+}
+function disposeHighlight(view: View, row: number): void {
+  const entry = view.highlightRows.get(row);
+  if (!entry) return;
+  for (const node of entry.nodes) { node.decoration.dispose(); node.marker.dispose(); }
+  view.highlightRows.delete(row);
+}
+function disposeAllHighlights(view: View): void {
+  for (const row of [...view.highlightRows.keys()]) disposeHighlight(view, row);
+}
+function applyDisplay(next: Display): void {
+  display = { ...next };
+  for (const view of views.values()) {
+    view.term.options.fontFamily = display.fontFamily;
+    view.term.options.fontSize = display.fontSize;
+    view.term.options.lineHeight = display.lineHeight;
+    view.term.options.cursorStyle = display.cursorStyle;
+    view.term.options.cursorBlink = display.cursorBlink;
+    view.term.options.scrollback = display.scrollback;
+    fit(view);
+    disposeAllHighlights(view);
+    refreshHighlights(view, true);
+  }
+}
+// 한 줄의 문자와 셀 위치를 함께 계산한다. 넓은 문자(한글 등)는 셀 두 칸을 차지한다.
+function lineCells(line: IBufferLine): { text: string; columns: number[]; widths: number[] } {
+  let text = ''; const columns: number[] = []; const widths: number[] = [];
+  const length = line.length;
+  for (let x = 0; x < length; x++) {
+    const cell = line.getCell(x);
+    if (!cell) break;
+    const width = cell.getWidth();
+    if (width === 0) continue;
+    const chars = cell.getChars() || ' ';
+    for (const char of chars) { text += char; columns.push(x); widths.push(width); }
+  }
+  let end = text.length;
+  while (end > 0 && text[end - 1] === ' ') end--;
+  return { text: text.slice(0, end), columns: columns.slice(0, end), widths: widths.slice(0, end) };
+}
+function matchRanges(text: string, highlight: Highlight): [number, number][] {
+  if (!text) return [];
+  try {
+    if (highlight.regex) {
+      const expression = new RegExp(highlight.pattern, highlight.caseSensitive ? 'g' : 'gi');
+      const found: [number, number][] = [];
+      for (const match of text.matchAll(expression)) {
+        if (!match[0].length || match.index === undefined) continue;
+        found.push([match.index, match.index + match[0].length]);
+        if (found.length >= 32) break;
+      }
+      return found;
+    }
+    const haystack = highlight.caseSensitive ? text : text.toLowerCase();
+    const needle = highlight.caseSensitive ? highlight.pattern : highlight.pattern.toLowerCase();
+    if (!needle) return [];
+    const found: [number, number][] = [];
+    let from = 0;
+    while (found.length < 32) {
+      const at = haystack.indexOf(needle, from);
+      if (at < 0) break;
+      found.push([at, at + needle.length]);
+      from = at + needle.length;
+    }
+    return found;
+  } catch { return []; }
+}
+function refreshHighlights(view: View, force = false): void {
+  const buffer = view.term.buffer.active;
+  const first = buffer.viewportY;
+  const last = Math.min(buffer.length, first + view.term.rows);
+  for (const row of [...view.highlightRows.keys()]) if (row < first || row >= last) disposeHighlight(view, row);
+  const active = highlights.filter(item => item.enabled);
+  if (!active.length) { disposeAllHighlights(view); return; }
+  const cursorRow = buffer.baseY + buffer.cursorY;
+  for (let row = first; row < last; row++) {
+    const line = buffer.getLine(row);
+    if (!line) { disposeHighlight(view, row); continue; }
+    const cells = lineCells(line);
+    const cached = view.highlightRows.get(row);
+    if (cached && cached.text === cells.text && !force) continue;
+    disposeHighlight(view, row);
+    if (!cells.text) continue;
+    // 먼저 등록한 하이라이트가 겹치는 구간을 차지한다.
+    const ranges: { start: number; end: number; color: string }[] = [];
+    for (const highlight of active) {
+      for (const [start, end] of matchRanges(cells.text, highlight)) {
+        if (ranges.some(range => start < range.end && end > range.start)) continue;
+        ranges.push({ start, end, color: highlight.color });
+      }
+    }
+    if (!ranges.length) continue;
+    const nodes: { decoration: IDecoration; marker: IMarker }[] = [];
+    for (const range of ranges) {
+      const marker = view.term.registerMarker(row - cursorRow);
+      if (!marker) continue;
+      const x = cells.columns[range.start];
+      const endCell = cells.columns[range.end - 1] + cells.widths[range.end - 1];
+      const decoration = view.term.registerDecoration({ marker, x, width: Math.max(1, endCell - x), foregroundColor: range.color, layer: 'top' });
+      if (!decoration) { marker.dispose(); continue; }
+      nodes.push({ decoration, marker });
+    }
+    if (nodes.length) view.highlightRows.set(row, { text: cells.text, nodes });
+  }
+}
+function scheduleHighlights(view: View): void {
+  if (view.highlightTimer !== undefined) return;
+  view.highlightTimer = setTimeout(() => {
+    view.highlightTimer = undefined;
+    if (!view.pane.hidden) refreshHighlights(view);
+  }, 80);
 }
 // 터미널 검색: 테마에 맞는 강조색을 쓰고, 결과 개수를 함께 보여 준다.
 function searchDecorations(): { matchBackground: string; matchBorder: string; matchOverviewRuler: string; activeMatchBackground: string; activeMatchBorder: string; activeMatchColorOverviewRuler: string } {
@@ -418,7 +669,7 @@ async function send(view: View, bytes: Uint8Array): Promise<void> {
 async function connect(profile: Profile, credentials: Credentials): Promise<void> {
   if (views.size === 0) sidebarExpanded(false);
   const id = crypto.randomUUID();
-  const term = new Terminal({ cursorBlink: true, allowProposedApi: true, fontFamily: 'Cascadia Mono, Consolas, "Malgun Gothic", monospace', fontSize: 13, lineHeight: 1.15, scrollback: 5000, theme: { ...terminalThemes[theme] } });
+  const term = new Terminal(terminalOptions());
   const fitAddon = new FitAddon(); const search = new SearchAddon(); term.loadAddon(fitAddon); term.loadAddon(search);
   const pane = document.createElement('article'); pane.className = 'session-pane'; pane.dataset.sessionId = id;
   const toolbar = document.createElement('div'); toolbar.className = 'session-toolbar';
@@ -429,9 +680,9 @@ async function connect(profile: Profile, credentials: Credentials): Promise<void
   const wrap = document.createElement('div'); wrap.className = 'terminal-wrap'; const host = document.createElement('div'); host.className = 'terminal-host'; const hex = document.createElement('pre'); hex.className = 'hex-view'; hex.hidden = true; wrap.append(host, hex);
   const message = document.createElement('div'); message.className = 'session-message'; message.textContent = '연결 준비 중';
   const sendbar = document.createElement('form'); sendbar.className = 'sendbar'; sendbar.hidden = profile.kind !== 'serial';
-  const view: View = { id, profile, label: profile.name, state: 'connecting', term, fit: fitAddon, search, pane, message, hex, hexMode: false, hexHistory: new HexHistory(), log: false, logButton, connectButton: reconnectButton, observer: new ResizeObserver(() => fit(view)), history: [], historyIndex: -1, historyDraft: '', searchInput: searchBox, searchCount: document.createElement('span'), searchOptions: { caseSensitive: false, regex: false } };
+  const view: View = { id, profile, label: profile.name, state: 'connecting', term, fit: fitAddon, search, pane, message, hex, hexMode: false, hexHistory: new HexHistory(), log: false, logButton, connectButton: reconnectButton, observer: new ResizeObserver(() => fit(view)), history: [], historyIndex: -1, historyDraft: '', searchInput: searchBox, searchCount: document.createElement('span'), searchOptions: { caseSensitive: false, regex: false }, highlightRows: new Map() };
   const searchBar = buildSearchBar(view, search);
-  toolbar.append(detail, searchBar, button('HEX', () => { view.hexMode = !view.hexMode; hex.hidden = !view.hexMode; scheduleHex(view); }), button('지우기', () => { term.clear(); view.hexHistory.clear(); hex.textContent = ''; }), logButton);
+  toolbar.append(detail, searchBar, button('HEX', () => { view.hexMode = !view.hexMode; hex.hidden = !view.hexMode; scheduleHex(view); }), button('지우기', () => { term.clear(); view.hexHistory.clear(); hex.textContent = ''; disposeAllHighlights(view); }), logButton);
   if (profile.kind === 'ssh') toolbar.append(button('SFTP', () => showFiles(view)));
   const sendToggle = button('송신', () => { sendbar.hidden = !sendbar.hidden; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); if (!sendbar.hidden) sendbar.querySelector('input')?.focus(); else term.focus(); });
   sendToggle.title = 'TEXT/HEX 송신줄 표시'; sendToggle.setAttribute('aria-pressed', String(!sendbar.hidden)); toolbar.append(sendToggle, reconnectButton); pane.append(toolbar, wrap);
@@ -464,6 +715,8 @@ async function connect(profile: Profile, credentials: Credentials): Promise<void
     void run(async () => { await send(view, bytes); recordHistory(view, text); command.value = ''; }).finally(() => { sending = false; sendButton.disabled = false; });
   });
   pane.append(sendbar, message); element('workspace').append(pane); views.set(id, view); activeId = id; homeSelected = false; renderWorkspace(); term.open(host); view.observer.observe(wrap); fit(view);
+  term.onScroll(() => scheduleHighlights(view));
+  term.onResize(() => scheduleHighlights(view));
   // 전송 순서를 유지하고 실패한 명령을 재연결 후 재전송하지 않는다.
   let writes: Promise<void> = Promise.resolve();
   term.onData(data => { const bytes = profile.kind === 'serial' && data === '\r' ? encodeSend('', 'text', profile.eol) : new TextEncoder().encode(data); if (!bytes.length) return; writes = writes.then(() => send(view, bytes)).catch(error => toast((error as Error).message)); });
@@ -478,7 +731,7 @@ async function connect(profile: Profile, credentials: Credentials): Promise<void
 }
 async function closeView(id: string): Promise<void> {
   const view = views.get(id); if (!view) return;
-  await api.disconnect(id); view.observer.disconnect(); if (view.hexFrame !== undefined) cancelAnimationFrame(view.hexFrame); view.term.dispose(); view.pane.remove(); views.delete(id);
+  await api.disconnect(id); view.observer.disconnect(); if (view.hexFrame !== undefined) cancelAnimationFrame(view.hexFrame); if (view.highlightTimer !== undefined) clearTimeout(view.highlightTimer); disposeAllHighlights(view); view.term.dispose(); view.pane.remove(); views.delete(id);
   if (filesId === id) { filesId = undefined; sidebarMode('sessions'); }
   if (activeId === id) activeId = [...views.keys()].at(-1);
   if (secondaryId === id) secondaryId = undefined;
@@ -498,6 +751,7 @@ function renderWorkspace(): void {
   for (const view of views.values()) {
     view.pane.hidden = home || (view.id !== activeId && view.id !== secondaryId);
     scheduleHex(view);
+    if (!view.pane.hidden) scheduleHighlights(view);
     tabs.append(renderTab(view, home));
   }
   element('session-count').textContent = `활성 연결 ${[...views.values()].filter(view => view.state === 'connected').length}`;
@@ -556,6 +810,7 @@ function onEvent(event: AppEvent): void {
     const bytes = new Uint8Array(event.bytes); view.term.write(bytes, () => api.ack(event.id, bytes.length));
     view.hexHistory.append(bytes);
     scheduleHex(view);
+    scheduleHighlights(view);
   } else if (event.type === 'state') {
     view.state = event.state; view.message.textContent = event.message; view.message.hidden = event.state === 'connected'; view.message.classList.toggle('error', event.state === 'error'); view.connectButton.textContent = event.state === 'connected' || event.state === 'connecting' ? '연결 종료' : '다시 연결'; view.logButton.disabled = event.state !== 'connected';
     element('status').textContent = `${view.label} · ${event.message}`; renderWorkspace();
@@ -599,6 +854,16 @@ element('home-appearance-form').addEventListener('submit', event => {
   })();
 });
 element('theme-select').addEventListener('change', () => { void run(() => changeTheme(value('theme-select') as Theme)); });
+element('open-display-settings').addEventListener('click', () => openTerminalSettings());
+for (const id of ['terminal-settings-close', 'terminal-settings-cancel']) element(id).addEventListener('click', () => closeTerminalSettings(true));
+element<HTMLDialogElement>('terminal-settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeTerminalSettings(true); });
+element<HTMLDialogElement>('terminal-settings-dialog').addEventListener('close', () => { element('terminal-settings-error').textContent = ''; });
+for (const id of ['display-font', 'display-size', 'display-line-height', 'display-scrollback']) input(id).addEventListener('input', previewDisplay);
+for (const id of ['display-cursor', 'display-cursor-blink']) element(id).addEventListener('change', previewDisplay);
+element('terminal-settings-form').addEventListener('submit', event => { event.preventDefault(); void run(saveTerminalSettings); });
+element('highlight-apply').addEventListener('click', () => applyHighlightEditor());
+element('highlight-new').addEventListener('click', () => resetHighlightEditor());
+input('highlight-pattern').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyHighlightEditor(); } });
 for (const id of ['new-serial', 'empty-serial']) element(id).addEventListener('click', () => showDialog('serial'));
 for (const id of ['new-ssh', 'empty-ssh']) element(id).addEventListener('click', () => showDialog('ssh'));
 element('new-local').addEventListener('click', () => { void run(local); });
@@ -628,8 +893,10 @@ element('files-up').addEventListener('click', () => { void run(() => loadFiles(`
 element('files-upload').addEventListener('click', () => { if (filesId) void run(() => api.upload(filesId!, value('remote-path'))); });
 api.onMenu(action => {
   const current = activeId ? views.get(activeId) : undefined;
-  const controls = { serial: 'new-serial', ssh: 'new-ssh', local: 'new-local', home: 'home-tab', sessions: 'show-sessions', split: 'split', files: 'toolbar-files', log: 'toolbar-log', refresh: 'refresh-ports', palette: 'command-palette-open' };
-  if (action in controls) element(controls[action as keyof typeof controls]).click();
+  const controls = { serial: 'new-serial', ssh: 'new-ssh', local: 'new-local', home: 'home-tab', sessions: 'show-sessions', split: 'split', files: 'toolbar-files', log: 'toolbar-log', refresh: 'refresh-ports' };
+  if (action === 'palette') openCommandPalette();
+  else if (action === 'display') openTerminalSettings();
+  else if (action in controls) element(controls[action as keyof typeof controls]).click();
   else if (action === 'disconnect' && current) void run(() => api.disconnect(current.id));
   else if (action === 'clear' && current) current.term.clear();
   else if (action === 'search' && current) current.pane.querySelector<HTMLInputElement>('.search-box')?.focus();
@@ -675,4 +942,8 @@ const icons: Record<string, { color: string; body: string }> = {
 for (const tool of document.querySelectorAll<HTMLElement>('[data-icon]')) {
   const icon = icons[tool.dataset.icon!]; const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('fill', icon.color); svg.setAttribute('stroke', icon.color); svg.setAttribute('stroke-width', '1.6'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = icon.body; tool.prepend(svg);
 }
-void run(async () => { const [currentTheme, appearance] = await Promise.all([api.theme(), api.homeAppearance()]); applyTheme(currentTheme); applyHomeAppearance(appearance); profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); void loadCommands(); });
+void run(async () => {
+  const [currentTheme, appearance, currentDisplay, currentHighlights] = await Promise.all([api.theme(), api.homeAppearance(), api.display(), api.highlights()]);
+  applyTheme(currentTheme); applyHomeAppearance(appearance); display = currentDisplay; highlights = currentHighlights;
+  profiles = await api.profiles(); renderProfiles(); await refreshPorts(); renderWorkspace(); void loadCommands();
+});
